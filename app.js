@@ -292,6 +292,58 @@ document.addEventListener('DOMContentLoaded', () => {
         achievement.style.animationDelay = `${index * 50}ms`;
     });
 
+    // Achievement System
+    const achievements = {
+        firstEvent: { unlocked: false, name: 'Перша подія', icon: '🎯' },
+        tenEvents: { unlocked: false, name: '10 подій', icon: '🔥' },
+        fiftyEvents: { unlocked: false, name: '50 подій', icon: '🚀' },
+        hundredEvents: { unlocked: false, name: '100 подій', icon: '👑' },
+        firstFriend: { unlocked: false, name: 'Перший друг', icon: '🤝' },
+        firstPremium: { unlocked: false, name: 'Перший Premium', icon: '⭐' },
+        hundredMessages: { unlocked: false, name: '100 повідомлень', icon: '💬' }
+    };
+
+    function updateAchievementProgress() {
+        const unlocked = Object.values(achievements).filter(a => a.unlocked).length;
+        const total = Object.keys(achievements).length;
+        const progressEl = document.querySelector('.achievement-progress');
+        if (progressEl) {
+            progressEl.textContent = `${unlocked}/${total}`;
+        }
+    }
+
+    function unlockAchievement(key) {
+        if (achievements[key] && !achievements[key].unlocked) {
+            achievements[key].unlocked = true;
+            const achievementEl = document.querySelector(`.achievement-name`);
+            // Trigger achievement notification
+            showAchievementNotification(achievements[key]);
+            updateAchievementProgress();
+        }
+    }
+
+    function showAchievementNotification(achievement) {
+        const notification = document.createElement('div');
+        notification.className = 'achievement-notification';
+        notification.innerHTML = `
+            <div class="achievement-notification-icon">${achievement.icon}</div>
+            <div class="achievement-notification-text">
+                <span class="achievement-notification-title">Досягнення!</span>
+                <span class="achievement-notification-name">${achievement.name}</span>
+            </div>
+        `;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => notification.classList.add('show'), 100);
+        setTimeout(() => {
+            notification.classList.remove('show');
+            setTimeout(() => notification.remove(), 300);
+        }, 3000);
+    }
+
+    // For testing - simulate achievement unlock
+    window.unlockAchievement = unlockAchievement;
+
     // Accept/Decline buttons in chat
     document.querySelectorAll('.accept-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {

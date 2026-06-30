@@ -2375,3 +2375,59 @@ body {
     font-size: 13px;
     font-weight: 500;
 }
+
+/* Achievement Notification */
+.achievement-notification {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-20px);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-active);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+    z-index: 2000;
+}
+
+.achievement-notification.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(0);
+}
+
+.achievement-notification-icon {
+    font-size: 32px;
+    animation: achievement-bounce 0.5s ease;
+}
+
+@keyframes achievement-bounce {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+}
+
+.achievement-notification-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.achievement-notification-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.achievement-notification-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
