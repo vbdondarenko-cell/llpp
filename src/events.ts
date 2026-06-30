@@ -131,3 +131,21 @@ export function formatEventDate(dateString: string): string {
   };
   return date.toLocaleDateString('uk-UA', options);
 }
+
+export async function getEventById(eventId: string): Promise<MapEvent | null> {
+  try {
+    const { data, error } = await supabase.rpc('get_event_by_id', {
+      p_event_id: eventId,
+    });
+
+    if (error) {
+      console.error('Get event error:', error);
+      return null;
+    }
+
+    return data as MapEvent;
+  } catch (err) {
+    console.error('Get event exception:', err);
+    return null;
+  }
+}

@@ -131,3 +131,51 @@ export interface CategoryFilter {
   icon: string;
   color: string;
 }
+
+// Event Request Types
+export type RequestStatus = 'pending' | 'accepted' | 'declined' | 'cancelled';
+
+export interface EventRequest {
+  id: string;
+  event_id: string;
+  user_id: string;
+  status: RequestStatus;
+  created_at: string;
+  updated_at: string;
+  profile?: {
+    id: string;
+    username: string | null;
+    first_name: string | null;
+    avatar_url: string | null;
+    rating: number;
+    rating_count: number;
+  };
+}
+
+export interface RequestResult {
+  success: boolean;
+  error?: string;
+  message?: string;
+  status?: RequestStatus;
+  request_id?: string;
+  requires_approval?: boolean;
+  user_id?: string;
+}
+
+export interface EventRequestsResponse {
+  success: boolean;
+  error?: string;
+  pending: EventRequest[];
+  accepted: EventRequest[];
+  declined: EventRequest[];
+  event: {
+    current_participants: number;
+    max_participants: number;
+  };
+}
+
+export interface UserRequestStatus {
+  has_request: boolean;
+  status?: RequestStatus;
+  created_at?: string;
+}

@@ -1,4 +1,4 @@
-// LinkUp Alpha - Sprint 3 Main Application
+// LinkUp Alpha - Sprint 4 Main Application
 import type { AppState, Location, MapEvent, EventCategory } from './types';
 import { telegramAuth } from './telegram-auth';
 import './styles.css';
@@ -17,6 +17,7 @@ import {
 import { LinkUpMap } from './map';
 import { BottomSheet, createEventCardList } from './components';
 import { renderEventCreationScreen } from './event-creation';
+import { renderEventDetails, cleanupEventDetails } from './event-details';
 
 // App state
 const state: AppState = {
@@ -622,9 +623,21 @@ function handleEventClick(event: MapEvent): void {
     mapInstance.selectMarker(event.id);
   }
 
-  if (bottomSheetInstance) {
-    bottomSheetInstance.open('half');
-  }
+  // Navigate to event details
+  const currentUserId = state.profile?.user_id || null;
+  renderEventDetailsScreen(event.id, currentUserId);
+}
+
+function renderEventDetailsScreen(eventId: string, currentUserId: string | null): void {
+  if (!appElement) return;
+  
+  cleanupEventDetails();
+  
+  renderEventDetails(appElement, eventId, currentUserId, {
+    onBack: () => {
+      renderMap();
+    },
+  });
 }
 
 function handleJoinEvent(_eventId: string): void {
