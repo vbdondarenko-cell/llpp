@@ -610,27 +610,29 @@
                                 </div>
                                 <h2 class="profile-name">Андрій Шевченко</h2>
                                 <p class="profile-username">@andriy_s</p>
-                                <div class="profile-stats">
-                                    <div class="stat-item">
-                                        <span class="stat-value">4.8</span>
-                                        <span class="stat-label">Рейтинг</span>
-                                        <div class="rating-stars">
-                                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
-                                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
-                                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
-                                            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
-                                            <svg viewBox="0 0 24 24" fill="currentColor" opacity="0.5"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
-                                        </div>
+                                <div class="profile-rating">
+                                    <span class="rating-value">4.8</span>
+                                    <div class="rating-stars">
+                                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                                        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+                                        <svg viewBox="0 0 24 24" fill="currentColor" opacity="0.5"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
                                     </div>
-                                    <div class="stat-divider"></div>
-                                    <div class="stat-item">
-                                        <span class="stat-value">23</span>
-                                        <span class="stat-label">Подій</span>
+                                    <span class="rating-count">(324)</span>
+                                </div>
+                                <div class="profile-stats-row">
+                                    <div class="stats-mini-card">
+                                        <span class="stats-mini-value">23</span>
+                                        <span class="stats-mini-label">Подій</span>
                                     </div>
-                                    <div class="stat-divider"></div>
-                                    <div class="stat-item">
-                                        <span class="stat-value">156</span>
-                                        <span class="stat-label">Друзів</span>
+                                    <div class="stats-mini-card">
+                                        <span class="stats-mini-value">156</span>
+                                        <span class="stats-mini-label">Друзів</span>
+                                    </div>
+                                    <div class="stats-mini-card">
+                                        <span class="stats-mini-value">1.2K</span>
+                                        <span class="stats-mini-label">Повідомлень</span>
                                     </div>
                                 </div>
                             </div>
@@ -1157,6 +1159,155 @@
                         </div>
                         <span>Системна</span>
                     </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit Profile Modal -->
+        <div id="edit-profile-modal" class="modal hidden">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content edit-profile-modal-content">
+                <div class="modal-header">
+                    <h3>Редагування профілю</h3>
+                    <button class="modal-close" id="edit-profile-close">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="edit-profile-form">
+                    <div class="photo-upload-section">
+                        <div class="avatar-upload">
+                            <img src="https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200" alt="Avatar" class="avatar-preview" id="avatar-preview">
+                            <button class="upload-avatar-btn" id="upload-avatar-btn">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M19 7v2.99s-1.99.01-2 0V7h-3s.01-1.99 0-2h3V2h2v3h3v2h-3zm-3 4V8h-3V5H5c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-8h-3zM12 18c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm-3-5c0 1.66 1.34 3 3 3s3-1.34 3-3-1.34-3-3-3-3 1.34-3 3z"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="cover-upload">
+                            <div class="cover-preview" id="cover-preview"></div>
+                            <button class="upload-cover-btn" id="upload-cover-btn">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path d="M19 7v2.99s-1.99.01-2 0V7h-3s.01-1.99 0-2h3V2h2v3h3v2h-3zm-3 4V8h-3V5H5c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2v-8h-3z"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Ім'я</label>
+                        <input type="text" class="form-input" id="edit-name" value="Андрій Шевченко" placeholder="Ваше ім'я">
+                    </div>
+                    <div class="form-group">
+                        <label>Username</label>
+                        <input type="text" class="form-input" id="edit-username" value="@andriy_s" placeholder="@username">
+                    </div>
+                    <div class="form-group">
+                        <label>Біо</label>
+                        <textarea class="form-input form-textarea" id="edit-bio" placeholder="Розкажіть про себе" rows="3">Люблю подорожувати та знайомитися з новими людьми! 🌎</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Місто</label>
+                        <select class="form-input form-select" id="edit-city">
+                            <option value="kyiv" selected>Київ</option>
+                            <option value="lviv">Львів</option>
+                            <option value="odesa">Одеса</option>
+                            <option value="kharkiv">Харків</option>
+                            <option value="dnipro">Дніпро</option>
+                        </select>
+                    </div>
+                    <button class="save-profile-btn" id="save-profile-btn">Зберегти зміни</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Achievements Modal -->
+        <div id="achievements-modal" class="modal hidden">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content achievements-modal-content">
+                <div class="modal-header">
+                    <h3>Мої досягнення</h3>
+                    <button class="modal-close" id="achievements-close">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="achievements-progress">
+                    <div class="achievements-icons">
+                        <span>🎯</span>
+                        <span>🔥</span>
+                        <span>🚀</span>
+                        <span>👑</span>
+                        <span>🤝</span>
+                        <span>⭐</span>
+                        <span>💬</span>
+                    </div>
+                    <div class="achievements-progress-text">
+                        <span>Розблоковано:</span>
+                        <span class="achievement-progress-value">0/7</span>
+                    </div>
+                    <div class="achievements-progress-bar">
+                        <div class="achievements-progress-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="achievements-list">
+                    <div class="achievement-item locked" data-achievement="firstEvent">
+                        <div class="achievement-item-icon">🎯</div>
+                        <div class="achievement-item-info">
+                            <span class="achievement-item-name">Перша подія</span>
+                            <span class="achievement-item-desc">Створіть свою першу подію</span>
+                        </div>
+                        <div class="achievement-item-status">🔒</div>
+                    </div>
+                    <div class="achievement-item locked" data-achievement="tenEvents">
+                        <div class="achievement-item-icon">🔥</div>
+                        <div class="achievement-item-info">
+                            <span class="achievement-item-name">10 подій</span>
+                            <span class="achievement-item-desc">Відвідайте 10 подій</span>
+                        </div>
+                        <div class="achievement-item-status">🔒</div>
+                    </div>
+                    <div class="achievement-item locked" data-achievement="fiftyEvents">
+                        <div class="achievement-item-icon">🚀</div>
+                        <div class="achievement-item-info">
+                            <span class="achievement-item-name">50 подій</span>
+                            <span class="achievement-item-desc">Відвідайте 50 подій</span>
+                        </div>
+                        <div class="achievement-item-status">🔒</div>
+                    </div>
+                    <div class="achievement-item locked" data-achievement="hundredEvents">
+                        <div class="achievement-item-icon">👑</div>
+                        <div class="achievement-item-info">
+                            <span class="achievement-item-name">100 подій</span>
+                            <span class="achievement-item-desc">Відвідайте 100 подій</span>
+                        </div>
+                        <div class="achievement-item-status">🔒</div>
+                    </div>
+                    <div class="achievement-item locked" data-achievement="firstFriend">
+                        <div class="achievement-item-icon">🤝</div>
+                        <div class="achievement-item-info">
+                            <span class="achievement-item-name">Перший друг</span>
+                            <span class="achievement-item-desc">Додайте першого друга</span>
+                        </div>
+                        <div class="achievement-item-status">🔒</div>
+                    </div>
+                    <div class="achievement-item locked" data-achievement="firstPremium">
+                        <div class="achievement-item-icon">⭐</div>
+                        <div class="achievement-item-info">
+                            <span class="achievement-item-name">Перший Premium</span>
+                            <span class="achievement-item-desc">Оформіть Premium підписку</span>
+                        </div>
+                        <div class="achievement-item-status">🔒</div>
+                    </div>
+                    <div class="achievement-item locked" data-achievement="hundredMessages">
+                        <div class="achievement-item-icon">💬</div>
+                        <div class="achievement-item-info">
+                            <span class="achievement-item-name">100 повідомлень</span>
+                            <span class="achievement-item-desc">Напишіть 100 повідомлень</span>
+                        </div>
+                        <div class="achievement-item-status">🔒</div>
+                    </div>
                 </div>
             </div>
         </div>

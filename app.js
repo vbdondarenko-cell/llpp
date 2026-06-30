@@ -344,6 +344,117 @@ document.addEventListener('DOMContentLoaded', () => {
     // For testing - simulate achievement unlock
     window.unlockAchievement = unlockAchievement;
 
+    // ===== Profile Functions =====
+    
+    // Edit Profile Modal
+    const editProfileBtn = document.querySelector('[data-edit-profile]');
+    const editProfileModal = document.getElementById('edit-profile-modal');
+    const editProfileClose = document.getElementById('edit-profile-close');
+    const saveProfileBtn = document.getElementById('save-profile-btn');
+    
+    if (editProfileBtn) {
+        editProfileBtn.addEventListener('click', () => {
+            openModal('edit-profile-modal');
+        });
+    }
+    
+    if (editProfileClose) {
+        editProfileClose.addEventListener('click', () => {
+            closeModal(editProfileModal);
+        });
+    }
+    
+    if (saveProfileBtn) {
+        saveProfileBtn.addEventListener('click', () => {
+            const name = document.getElementById('edit-name').value;
+            const username = document.getElementById('edit-username').value;
+            const bio = document.getElementById('edit-bio').value;
+            const city = document.getElementById('edit-city').value;
+            
+            // Update profile display
+            const profileName = document.querySelector('.profile-name');
+            const profileUsername = document.querySelector('.profile-username');
+            
+            if (profileName) profileName.textContent = name;
+            if (profileUsername) profileUsername.textContent = username;
+            
+            // Show success feedback
+            saveProfileBtn.textContent = '✓ Збережено!';
+            setTimeout(() => {
+                saveProfileBtn.textContent = 'Зберегти зміни';
+                closeModal(editProfileModal);
+            }, 1000);
+        });
+    }
+    
+    // Photo Upload (placeholder functionality)
+    const uploadAvatarBtn = document.getElementById('upload-avatar-btn');
+    const uploadCoverBtn = document.getElementById('upload-cover-btn');
+    
+    if (uploadAvatarBtn) {
+        uploadAvatarBtn.addEventListener('click', () => {
+            // In production: trigger file input
+            alert('Завантаження фото буде доступно після інтеграції з Supabase Storage');
+        });
+    }
+    
+    if (uploadCoverBtn) {
+        uploadCoverBtn.addEventListener('click', () => {
+            // In production: trigger file input
+            alert('Завантаження cover буде доступно після інтеграції з Supabase Storage');
+        });
+    }
+    
+    // Achievements Modal
+    const achievementsSection = document.querySelector('.achievements-grid');
+    const achievementsModal = document.getElementById('achievements-modal');
+    const achievementsClose = document.getElementById('achievements-close');
+    
+    if (achievementsSection) {
+        achievementsSection.addEventListener('click', () => {
+            openModal('achievements-modal');
+        });
+        achievementsSection.style.cursor = 'pointer';
+    }
+    
+    if (achievementsClose) {
+        achievementsClose.addEventListener('click', () => {
+            closeModal(achievementsModal);
+        });
+    }
+    
+    // Update achievements modal progress
+    function updateAchievementsModal() {
+        const unlocked = Object.values(achievements).filter(a => a.unlocked).length;
+        const total = Object.keys(achievements).length;
+        const progressValue = document.querySelector('.achievement-progress-value');
+        const progressFill = document.querySelector('.achievements-progress-fill');
+        
+        if (progressValue) progressValue.textContent = `${unlocked}/${total}`;
+        if (progressFill) progressFill.style.width = `${(unlocked / total) * 100}%`;
+        
+        // Update list items
+        document.querySelectorAll('.achievement-item').forEach(item => {
+            const key = item.dataset.achievement;
+            if (achievements[key] && achievements[key].unlocked) {
+                item.classList.remove('locked');
+                item.classList.add('unlocked');
+                item.querySelector('.achievement-item-status').textContent = '✓';
+            }
+        });
+    }
+    
+    // Menu item - Edit Profile
+    const menuItems = document.querySelectorAll('.menu-item');
+    menuItems.forEach(item => {
+        const text = item.querySelector('span')?.textContent;
+        if (text && text.includes('Редагувати профіль')) {
+            item.addEventListener('click', () => {
+                openModal('edit-profile-modal');
+            });
+        }
+    });
+    
     // Accept/Decline buttons in chat
     document.querySelectorAll('.accept-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
