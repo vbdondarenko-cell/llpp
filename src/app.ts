@@ -1,4 +1,4 @@
-// LinkUp Alpha - Sprint 2 Main Application
+// LinkUp Alpha - Sprint 3 Main Application
 import type { AppState, Location, MapEvent, EventCategory } from './types';
 import { telegramAuth } from './telegram-auth';
 import './styles.css';
@@ -16,6 +16,7 @@ import {
 } from './events';
 import { LinkUpMap } from './map';
 import { BottomSheet, createEventCardList } from './components';
+import { renderEventCreationScreen } from './event-creation';
 
 // App state
 const state: AppState = {
@@ -484,6 +485,51 @@ async function renderMap(): Promise<void> {
   // Initialize map and bottom sheet
   initMapComponents(location);
   initCategoryFilters();
+  initNavListeners();
+}
+
+// ============ EVENT CREATION ============
+function renderCreateEvent(): void {
+  state.currentView = 'create';
+  if (!appElement) return;
+  
+  appElement.innerHTML = '';
+  
+  renderEventCreationScreen(appElement, {}, {
+    onSuccess: (eventId) => {
+      console.log('Event created:', eventId);
+      telegramAuth.showAlert('Подію створено!');
+      state.currentView = 'map';
+      renderMap();
+    },
+    onCancel: () => {
+      state.currentView = 'map';
+      renderMap();
+    },
+  });
+}
+
+function initNavListeners(): void {
+  if (!appElement) return;
+  
+  // Map tab
+  appElement.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const navItem = target.closest('.nav-item');
+    if (!navItem) return;
+    
+    const index = Array.from(navItem.parentElement?.children || []).indexOf(navItem);
+    
+    if (index === 0) {
+      // Map
+      navItem.parentElement?.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+      navItem.classList.add('active');
+      renderMap();
+    } else if (index === 2) {
+      // Create
+      renderCreateEvent();
+    }
+  });
 }
 
 function initMapComponents(location: Location): void {

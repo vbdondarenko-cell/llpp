@@ -60,7 +60,7 @@ export interface OnboardingStep {
   icon: string;
 }
 
-export type ViewType = 'splash' | 'onboarding' | 'home' | 'map';
+export type ViewType = 'splash' | 'onboarding' | 'home' | 'map' | 'create';
 
 export interface AppState {
   currentView: ViewType;
