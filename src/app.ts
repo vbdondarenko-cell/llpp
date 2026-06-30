@@ -1,5 +1,5 @@
-// LinkUp Alpha - Sprint 1 Main Application
-import type { AppState } from './types';
+// LinkUp Alpha - Sprint 2 Main Application
+import type { AppState, Location, MapEvent, EventCategory } from './types';
 import { telegramAuth } from './telegram-auth';
 import './styles.css';
 import {
@@ -10,6 +10,12 @@ import {
   getUserInterests,
   setUserInterests,
 } from './supabase';
+import {
+  CATEGORIES,
+  getEventsNearby,
+} from './events';
+import { LinkUpMap } from './map';
+import { BottomSheet, createEventCardList } from './components';
 
 // App state
 const state: AppState = {
@@ -19,7 +25,21 @@ const state: AppState = {
   interests: [],
   userInterests: [],
   isLoading: false,
+  mapInitialized: false,
+  userLocation: null,
+  selectedCategory: null,
+  events: [],
+  bottomSheetState: 'half',
 };
+
+// Map instance
+let mapInstance: LinkUpMap | null = null;
+let bottomSheetInstance: BottomSheet | null = null;
+let mapContainer: HTMLElement | null = null;
+let bottomSheetContainer: HTMLElement | null = null;
+
+// Default location (Kyiv)
+const DEFAULT_LOCATION: Location = { latitude: 50.4501, longitude: 30.5234 };
 
 // DOM Elements
 let appElement: HTMLElement | null = null;
@@ -32,10 +52,7 @@ function init(): void {
     return;
   }
 
-  // Apply Telegram theme
   applyTheme();
-
-  // Render splash screen
   renderSplash();
 }
 
@@ -75,7 +92,6 @@ function renderSplash(): void {
     </div>
   `;
 
-  // Transition to next screen
   setTimeout(async () => {
     await authenticateUser();
   }, 2500);
@@ -89,13 +105,11 @@ async function authenticateUser(): Promise<void> {
     const userData = telegramAuth.getUserData();
 
     if (!userData) {
-      // Demo mode - create demo user
       console.log('Running in demo mode');
       renderOnboarding();
       return;
     }
 
-    // Create profile in Supabase
     const profileId = await createProfile(
       userData.telegramId,
       userData.username,
@@ -110,14 +124,13 @@ async function authenticateUser(): Promise<void> {
       return;
     }
 
-    // Get existing profile
     const profile = await getProfile();
     if (profile) {
       state.profile = profile;
       state.isAuthenticated = true;
 
       if (profile.has_completed_onboarding) {
-        renderHome();
+        initUserLocation();
       } else {
         await loadInterests();
         renderOnboarding();
@@ -133,6 +146,28 @@ async function authenticateUser(): Promise<void> {
   }
 
   state.isLoading = false;
+}
+
+function initUserLocation(): void {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        state.userLocation = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        };
+        renderMap();
+      },
+      () => {
+        state.userLocation = DEFAULT_LOCATION;
+        renderMap();
+      },
+      { enableHighAccuracy: true, timeout: 5000 }
+    );
+  } else {
+    state.userLocation = DEFAULT_LOCATION;
+    renderMap();
+  }
 }
 
 // ============ ONBOARDING ============
@@ -154,7 +189,6 @@ function renderOnboarding(): void {
   state.currentView = 'onboarding';
   currentOnboardingStep = 0;
   if (!appElement) return;
-
   renderOnboardingStep();
 }
 
@@ -204,7 +238,6 @@ function renderOnboardingStep(): void {
     </div>
   `;
 
-  // Attach event listeners
   attachOnboardingListeners();
 }
 
@@ -277,7 +310,6 @@ function attachOnboardingListeners(): void {
     telegramAuth.hapticFeedback('light');
 
     if (currentOnboardingStep === 2) {
-      // Interest selection step - save interests
       const selectedInterests = state.userInterests.map(i => i.id);
       if (selectedInterests.length >= 3) {
         await setUserInterests(selectedInterests);
@@ -285,7 +317,6 @@ function attachOnboardingListeners(): void {
     }
 
     if (currentOnboardingStep === onboardingSteps.length - 1) {
-      // Complete onboarding
       await completeOnboarding();
     } else {
       currentOnboardingStep++;
@@ -301,7 +332,6 @@ function attachOnboardingListeners(): void {
     }
   });
 
-  // Interest chips
   const chips = document.querySelectorAll('.interest-chip');
   chips.forEach(chip => {
     chip.addEventListener('click', () => {
@@ -321,7 +351,6 @@ function attachOnboardingListeners(): void {
         chip.classList.add('selected');
       }
 
-      // Update button state
       const nextBtn = document.getElementById('onboarding-next') as HTMLButtonElement;
       if (nextBtn) {
         nextBtn.disabled = state.userInterests.length < 3;
@@ -332,28 +361,24 @@ function attachOnboardingListeners(): void {
 
 async function completeOnboarding(): Promise<void> {
   state.isLoading = true;
-
-  // Update profile
   await updateProfile(undefined, undefined, undefined, undefined, undefined, undefined, true);
-
-  // Save selected interests
   const selectedIds = state.userInterests.map(i => i.id);
   await setUserInterests(selectedIds);
-
   state.isLoading = false;
   telegramAuth.hapticNotification('success');
-  renderHome();
+  initUserLocation();
 }
 
-// ============ HOME SCREEN ============
-function renderHome(): void {
-  state.currentView = 'home';
+// ============ MAP SCREEN ============
+async function renderMap(): Promise<void> {
+  state.currentView = 'map';
   if (!appElement) return;
 
   const safeArea = telegramAuth.getSafeArea();
+  const location = state.userLocation || DEFAULT_LOCATION;
 
   appElement.innerHTML = `
-    <div class="main-app" style="padding-top: ${safeArea.top}px;">
+    <div class="map-app" style="padding-top: ${safeArea.top}px;">
       <!-- Status Bar -->
       <div class="status-bar">
         <div class="status-left">
@@ -373,16 +398,13 @@ function renderHome(): void {
       </div>
 
       <!-- Header -->
-      <header class="app-header">
+      <header class="map-header">
         <div class="header-left">
           <button class="location-btn" id="location-btn">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
             </svg>
             <span class="location-name">Київ</span>
-            <svg class="chevron" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6 1.41-1.41z"/>
-            </svg>
           </button>
         </div>
         <h1 class="header-title">LinkUp</h1>
@@ -392,22 +414,26 @@ function renderHome(): void {
               <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
             </svg>
           </button>
-          <button class="icon-btn" id="settings-btn">
-            <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
-            </svg>
-          </button>
         </div>
       </header>
 
-      <!-- Content Area -->
-      <main class="content-area">
-        <div class="home-placeholder">
-          <div class="placeholder-icon">🗺️</div>
-          <h2>Карта</h2>
-          <p>Події та люди поблизу з'являться тут</p>
-        </div>
-      </main>
+      <!-- Category Chips -->
+      <div class="category-chips" id="category-chips">
+        <button class="category-chip active" data-category="">
+          <span>Всі</span>
+        </button>
+        ${CATEGORIES.map(cat => `
+          <button class="category-chip" data-category="${cat.key}" style="--chip-color: ${cat.color}">
+            <span>${cat.icon}</span>
+          </button>
+        `).join('')}
+      </div>
+
+      <!-- Map Container -->
+      <div class="map-container" id="map-container"></div>
+
+      <!-- Bottom Sheet -->
+      <div class="bottom-sheet-container" id="bottom-sheet-container"></div>
 
       <!-- Bottom Navigation -->
       <nav class="bottom-nav" style="padding-bottom: ${safeArea.bottom}px;">
@@ -454,9 +480,135 @@ function renderHome(): void {
       </nav>
     </div>
   `;
+
+  // Initialize map and bottom sheet
+  initMapComponents(location);
+  initCategoryFilters();
+}
+
+function initMapComponents(location: Location): void {
+  mapContainer = document.getElementById('map-container');
+  bottomSheetContainer = document.getElementById('bottom-sheet-container');
+
+  if (!mapContainer || !bottomSheetContainer) return;
+
+  // Initialize map
+  const mapToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
+  mapInstance = new LinkUpMap(mapContainer, mapToken);
+
+  mapInstance.setOnEventClick((event) => {
+    handleEventClick(event);
+  });
+
+  mapInstance.setOnLocationChange((newLocation) => {
+    state.userLocation = newLocation;
+    loadEvents(newLocation);
+  });
+
+  // Set user location on map
+  mapInstance.setUserLocation(location);
+
+  // Initialize bottom sheet
+  bottomSheetInstance = new BottomSheet(bottomSheetContainer, {
+    onStateChange: (newState) => {
+      state.bottomSheetState = newState;
+    },
+  });
+
+  // Load initial events
+  loadEvents(location);
+}
+
+async function loadEvents(location: Location): Promise<void> {
+  const category = state.selectedCategory as EventCategory | null;
+  state.events = await getEventsNearby(location, 10, category);
+
+  // Update map markers
+  if (mapInstance) {
+    mapInstance.updateMarkers(state.events, location);
+  }
+
+  // Update bottom sheet content
+  updateBottomSheet();
+}
+
+function updateBottomSheet(): void {
+  if (!bottomSheetInstance) return;
+
+  const content = bottomSheetInstance.getContent();
+  if (!content) return;
+
+  const filteredEvents = state.selectedCategory
+    ? state.events.filter(e => e.category === state.selectedCategory)
+    : state.events;
+
+  content.innerHTML = `
+    <div class="events-list-header">
+      <h2 class="events-list-title">Події поруч</h2>
+      <span class="events-count">${filteredEvents.length}</span>
+    </div>
+  `;
+
+  if (filteredEvents.length === 0) {
+    content.innerHTML += `
+      <div class="empty-events">
+        <div class="empty-icon">🔍</div>
+        <p>Немає подій поблизу</p>
+        <span>Спробуйте обрати іншу категорію</span>
+      </div>
+    `;
+  } else {
+    const eventsList = createEventCardList(filteredEvents, {
+      onClick: (event) => handleEventClick(event),
+      onJoin: (eventId) => handleJoinEvent(eventId),
+    });
+    content.appendChild(eventsList);
+  }
+
+  bottomSheetInstance.open(state.bottomSheetState);
+}
+
+function handleEventClick(event: MapEvent): void {
+  telegramAuth.hapticFeedback('medium');
+  
+  if (mapInstance) {
+    mapInstance.flyTo({ latitude: event.latitude, longitude: event.longitude }, 15);
+    mapInstance.selectMarker(event.id);
+  }
+
+  if (bottomSheetInstance) {
+    bottomSheetInstance.open('half');
+  }
+}
+
+function handleJoinEvent(_eventId: string): void {
+  telegramAuth.hapticNotification('success');
+  telegramAuth.showAlert('Ви приєдналися до події!');
+}
+
+function initCategoryFilters(): void {
+  const chipsContainer = document.getElementById('category-chips');
+  if (!chipsContainer) return;
+
+  const chips = chipsContainer.querySelectorAll('.category-chip');
+  chips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      telegramAuth.hapticFeedback('light');
+      
+      chips.forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+
+      const category = (chip as HTMLElement).dataset.category || null;
+      state.selectedCategory = category;
+
+      if (state.userLocation) {
+        loadEvents(state.userLocation);
+      }
+    });
+  });
 }
 
 // Initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', init);
 
-export { state, init };
+export { state, init, renderMap };

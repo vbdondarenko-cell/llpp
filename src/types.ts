@@ -60,7 +60,7 @@ export interface OnboardingStep {
   icon: string;
 }
 
-export type ViewType = 'splash' | 'onboarding' | 'home';
+export type ViewType = 'splash' | 'onboarding' | 'home' | 'map';
 
 export interface AppState {
   currentView: ViewType;
@@ -69,4 +69,65 @@ export interface AppState {
   interests: Interest[];
   userInterests: Interest[];
   isLoading: boolean;
+  mapInitialized: boolean;
+  userLocation: Location | null;
+  selectedCategory: string | null;
+  events: MapEvent[];
+  bottomSheetState: BottomSheetState;
+}
+
+export interface Location {
+  latitude: number;
+  longitude: number;
+}
+
+export type BottomSheetState = 'collapsed' | 'half' | 'full';
+
+export type EventCategory = 
+  | 'party' 
+  | 'sport' 
+  | 'food' 
+  | 'music' 
+  | 'art' 
+  | 'nature' 
+  | 'games' 
+  | 'networking' 
+  | 'education' 
+  | 'other';
+
+export interface MapEvent {
+  id: string;
+  title: string;
+  description: string | null;
+  category: EventCategory;
+  event_type: 'in_person' | 'online' | 'hybrid';
+  latitude: number;
+  longitude: number;
+  location_name: string | null;
+  location_address: string | null;
+  event_date: string;
+  event_end_date: string | null;
+  max_participants: number;
+  current_participants: number;
+  price: number;
+  currency: string;
+  photo_url: string | null;
+  status: string;
+  requires_approval: boolean;
+  is_premium_only: boolean;
+  organizer: {
+    id: string;
+    username: string | null;
+    first_name: string | null;
+    avatar_url: string | null;
+  };
+  distance: number;
+  created_at: string;
+}
+
+export interface CategoryFilter {
+  key: EventCategory;
+  label: string;
+  icon: string;
+  color: string;
 }
