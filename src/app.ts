@@ -58,6 +58,8 @@ let createEventPageInstance: CreateEventPage | null = null;
 let mapSyncInstance: MapSync | null = null;
 let eventSyncInstance: EventSync | null = null;
 let mapContainer: HTMLElement | null = null;
+// Sprint Alpha: Map initialization guard to prevent duplicate map instances
+let isMapInitialized = false;
 let bottomSheetContainer: HTMLElement | null = null;
 
 // Default location (Kyiv)
@@ -854,6 +856,10 @@ function initNavListeners(): void {
 }
 
 function initMapComponents(location: Location): void {
+  // Sprint Alpha: Prevent duplicate map initialization
+  if (isMapInitialized) return;
+  isMapInitialized = true;
+
   mapContainer = document.getElementById('map-container');
   bottomSheetContainer = document.getElementById('bottom-sheet-container');
 
