@@ -1,5 +1,5 @@
 // LinkUp Alpha - Sprint 10 Main Application
-import type { AppState, Location, MapEvent, EventCategory } from './types';
+import type { AppState, Location } from './types';
 import { telegramAuth } from './telegram-auth';
 import './styles.css';
 import {
@@ -9,12 +9,10 @@ import {
   getUserInterests,
   setUserInterests,
 } from './supabase';
-import {
-  CATEGORIES,
-  getEventsNearby,
-} from './events';
-import { LinkUpMap } from './map';
-import { BottomSheet, createEventCardList } from './components';
+import { CATEGORIES } from './events';
+// Sprint 2.1: Use new map implementation
+import { LinkUpMap } from './map-sprint21';
+import { BottomSheet } from './components';
 import { renderEventCreationScreen } from './event-creation';
 import { renderEventDetails, cleanupEventDetails } from './event-details';
 import { cleanup as cleanupChat } from './chat';
@@ -792,21 +790,33 @@ function initMapComponents(location: Location): void {
 
   if (!mapContainer || !bottomSheetContainer) return;
 
-  // Initialize map
+  // Sprint 2.1: Get safe area from Telegram
+  const safeArea = telegramAuth.getSafeArea();
+
+  // Initialize map with Sprint 2.1 LinkUpMap
   const mapToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
-  mapInstance = new LinkUpMap(mapContainer, mapToken);
-
-  mapInstance.setOnEventClick((event) => {
-    handleEventClick(event);
+  mapInstance = new LinkUpMap({
+    container: mapContainer,
+    accessToken: mapToken,
+    defaultCenter: [location.longitude || DEFAULT_LOCATION.longitude, location.latitude || DEFAULT_LOCATION.latitude],
+    defaultZoom: 13,
+    safeArea,
+    onLocationChange: (newLocation) => {
+      state.userLocation = newLocation;
+      // Sprint 2.1: Don't load events yet (future sprint)
+    },
+    onMapReady: () => {
+      console.log('Sprint 2.1: Map ready');
+    },
+    onMapError: (error) => {
+      console.error('Sprint 2.1: Map error:', error);
+    },
   });
 
-  mapInstance.setOnLocationChange((newLocation) => {
-    state.userLocation = newLocation;
-    loadEvents(newLocation);
-  });
-
-  // Set user location on map
-  mapInstance.setUserLocation(location);
+  // Set user location on map if available
+  if (location) {
+    mapInstance.setUserLocation(location);
+  }
 
   // Initialize bottom sheet
   bottomSheetInstance = new BottomSheet(bottomSheetContainer, {
@@ -819,72 +829,30 @@ function initMapComponents(location: Location): void {
   document.getElementById('achievements-btn')?.addEventListener('click', () => {
     renderAchievements();
   });
-
-  // Load initial events
-  loadEvents(location);
 }
 
-async function loadEvents(location: Location): Promise<void> {
-  const category = state.selectedCategory as EventCategory | null;
-  state.events = await getEventsNearby(location, 10, category);
+// Sprint 2.1: Events and markers will be loaded in future sprints
+// Keeping for future implementation
 
-  // Update map markers
-  if (mapInstance) {
-    mapInstance.updateMarkers(state.events, location);
-  }
-
-  // Update bottom sheet content
-  updateBottomSheet();
-}
-
-function updateBottomSheet(): void {
+// Sprint 2.1: Empty bottom sheet - will show events in future sprints
+export function updateBottomSheet(): void {
   if (!bottomSheetInstance) return;
-
-  const content = bottomSheetInstance.getContent();
-  if (!content) return;
-
-  const filteredEvents = state.selectedCategory
-    ? state.events.filter(e => e.category === state.selectedCategory)
-    : state.events;
-
-  content.innerHTML = `
-    <div class="events-list-header">
-      <h2 class="events-list-title">Події поруч</h2>
-      <span class="events-count">${filteredEvents.length}</span>
-    </div>
-  `;
-
-  if (filteredEvents.length === 0) {
-    content.innerHTML += `
-      <div class="empty-events">
-        <div class="empty-icon">🔍</div>
-        <p>Немає подій поблизу</p>
-        <span>Спробуйте обрати іншу категорію</span>
-      </div>
-    `;
-  } else {
-    const eventsList = createEventCardList(filteredEvents, {
-      onClick: (event) => handleEventClick(event),
-      onJoin: (eventId) => handleJoinEvent(eventId),
-    });
-    content.appendChild(eventsList);
-  }
-
-  bottomSheetInstance.open(state.bottomSheetState);
+  bottomSheetInstance.open('collapsed');
 }
 
-function handleEventClick(event: MapEvent): void {
-  telegramAuth.hapticFeedback('medium');
-  
-  if (mapInstance) {
-    mapInstance.flyTo({ latitude: event.latitude, longitude: event.longitude }, 15);
-    mapInstance.selectMarker(event.id);
-  }
-
-  // Navigate to event details
-  const currentUserId = state.profile?.user_id || null;
-  renderEventDetailsScreen(event.id, currentUserId);
-}
+// Sprint 2.1: Event click handling will be implemented in future sprints
+// function handleEventClick(event: MapEvent): void {
+//   telegramAuth.hapticFeedback('medium');
+//   
+//   if (mapInstance) {
+//     mapInstance.flyTo({ latitude: event.latitude, longitude: event.longitude }, 15);
+//     mapInstance.selectMarker(event.id);
+//   }
+//
+//   // Navigate to event details
+//   const currentUserId = state.profile?.user_id || null;
+//   renderEventDetailsScreen(event.id, currentUserId);
+// }
 
 function renderEventDetailsScreen(eventId: string, currentUserId: string | null): void {
   if (!appElement) return;
@@ -919,10 +887,11 @@ function renderChatScreen(chat: ChatListItem, currentUserId: string | null): voi
   });
 }
 
-function handleJoinEvent(_eventId: string): void {
-  telegramAuth.hapticNotification('success');
-  telegramAuth.showAlert('Ви приєдналися до події!');
-}
+// Sprint 2.1: Event join handling will be implemented in future sprints
+// function handleJoinEvent(_eventId: string): void {
+//   telegramAuth.hapticNotification('success');
+//   telegramAuth.showAlert('Ви приєдналися до події!');
+// }
 
 function initCategoryFilters(): void {
   const chipsContainer = document.getElementById('category-chips');
@@ -939,9 +908,10 @@ function initCategoryFilters(): void {
       const category = (chip as HTMLElement).dataset.category || null;
       state.selectedCategory = category;
 
-      if (state.userLocation) {
-        loadEvents(state.userLocation);
-      }
+      // Sprint 2.1: Don't load events yet (future sprint)
+      // if (state.userLocation) {
+      //   loadEvents(state.userLocation);
+      // }
     });
   });
 }
