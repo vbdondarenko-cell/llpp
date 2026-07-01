@@ -60,7 +60,7 @@ export interface OnboardingStep {
   icon: string;
 }
 
-export type ViewType = 'splash' | 'onboarding' | 'home' | 'map' | 'create' | 'premium' | 'achievements';
+export type ViewType = 'splash' | 'onboarding' | 'home' | 'map' | 'create' | 'premium' | 'achievements' | 'profile';
 
 export interface AppState {
   currentView: ViewType;
@@ -366,4 +366,101 @@ export interface AchievementCheckResult {
   success: boolean;
   error?: string;
   unlocked: AchievementNotification[];
+}
+
+// Profile Types
+export interface UserStatistics {
+  events_created: number;
+  events_joined: number;
+  completed_events: number;
+  messages_sent: number;
+  chats_joined: number;
+  friends_added: number;
+  achievements_count: number;
+  categories_explored_count: number;
+  is_premium: boolean;
+  premium_expires_at: string | null;
+  average_rating: number;
+  rating_count: number;
+}
+
+export interface PrivacySettings {
+  show_online: boolean;
+  show_events: boolean;
+  allow_messages: boolean;
+}
+
+export interface AppSettings {
+  language: string;
+  notifications_enabled: boolean;
+  dark_mode: boolean;
+}
+
+export interface UserProfile {
+  user_id: string;
+  username: string;
+  display_name: string;
+  bio: string;
+  avatar_url: string;
+  interests: string[];
+  location: string;
+  created_at: string;
+  statistics: {
+    events_created: number;
+    events_joined: number;
+    completed_events: number;
+    friends_added: number;
+    achievements_count: number;
+    is_premium: boolean;
+    average_rating: number;
+    rating_count: number;
+  };
+  privacy: PrivacySettings;
+  settings: AppSettings;
+  is_own_profile: boolean;
+  can_view_full: boolean;
+}
+
+export interface ProfileResult {
+  success: boolean;
+  error?: string;
+  profile: UserProfile;
+}
+
+export interface StatisticsResult {
+  success: boolean;
+  error?: string;
+  statistics: UserStatistics;
+}
+
+export interface Friend {
+  user_id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string;
+  friendship_id: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  is_premium: boolean;
+}
+
+export interface FriendsResult {
+  success: boolean;
+  error?: string;
+  friends: Friend[];
+}
+
+export interface FriendRequest {
+  friendship_id: string;
+  user_id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string;
+  created_at: string;
+}
+
+export interface FriendRequestsResult {
+  success: boolean;
+  error?: string;
+  incoming: FriendRequest[];
+  outgoing: FriendRequest[];
 }

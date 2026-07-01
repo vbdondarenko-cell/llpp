@@ -1,4 +1,4 @@
-// LinkUp Alpha - Sprint 7 Main Application
+// LinkUp Alpha - Sprint 8 Main Application
 import type { AppState, Location, MapEvent, EventCategory } from './types';
 import { telegramAuth } from './telegram-auth';
 import './styles.css';
@@ -21,6 +21,8 @@ import { renderEventDetails, cleanupEventDetails } from './event-details';
 import { cleanup as cleanupChat } from './chat';
 import { renderPremiumScreen, cleanup as cleanupPremium } from './premium';
 import { renderAchievementsScreen, cleanupAchievements } from './achievements';
+import { renderProfileScreen, cleanupProfile } from './profile';
+import { renderSettingsScreen, cleanupSettings } from './settings';
 import type { ChatListItem } from './types';
 
 // App state
@@ -480,7 +482,7 @@ async function renderMap(): Promise<void> {
           </div>
           <span>Premium</span>
         </button>
-        <button class="nav-item">
+        <button class="nav-item" id="profile-nav-btn">
           <div class="nav-icon">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
@@ -544,6 +546,8 @@ function renderAchievements(): void {
   cleanupEventDetails();
   cleanupChat();
   cleanupPremium();
+  cleanupProfile();
+  cleanupSettings();
   cleanupAchievements();
   
   renderAchievementsScreen(appElement, {
@@ -551,6 +555,58 @@ function renderAchievements(): void {
       state.currentView = 'map';
       renderMap();
     },
+  });
+}
+
+function renderProfile(): void {
+  if (!appElement) return;
+  
+  cleanupEventDetails();
+  cleanupChat();
+  cleanupPremium();
+  cleanupAchievements();
+  cleanupSettings();
+  cleanupProfile();
+  
+  renderProfileScreen(appElement, undefined, {
+    onBack: () => {
+      state.currentView = 'map';
+      renderMap();
+    },
+    onSettings: () => {
+      renderSettings();
+    },
+    onAchievements: () => {
+      renderAchievements();
+    },
+    onPremium: () => {
+      renderPremium();
+    },
+  });
+}
+
+function renderSettings(): void {
+  if (!appElement) return;
+  
+  const container = appElement;
+  import('./profile-api').then(({ getUserProfile }) => {
+    getUserProfile().then((result) => {
+      if (result.success && result.profile) {
+        renderSettingsScreen(container, result.profile, {
+          onBack: () => {
+            renderProfile();
+          },
+          onPremium: () => {
+            renderPremium();
+          },
+          onLogout: () => {
+            // Handle logout
+            telegramAuth.showAlert('Вихід виконано');
+            window.location.reload();
+          },
+        });
+      }
+    });
   });
 }
 
@@ -576,6 +632,9 @@ function initNavListeners(): void {
     } else if (index === 3) {
       // Premium
       renderPremium();
+    } else if (index === 4) {
+      // Profile
+      renderProfile();
     }
   });
 }
