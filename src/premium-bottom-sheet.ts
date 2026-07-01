@@ -3,6 +3,12 @@
 import type { MapEvent } from './types';
 
 export interface PremiumBottomSheetOptions {
+  // Sprint 4.1: Join Request System
+  requestState?: 'none' | 'pending' | 'accepted' | 'declined' | 'joined';
+  isRequestLoading?: boolean;
+  isEventOrganizer?: boolean;
+  onCancelRequest?: (eventId: string) => void;
+  onLeaveEvent?: (eventId: string) => void;
   onJoin?: (eventId: string) => void;
   onShare?: (eventId: string) => void;
   onSave?: (eventId: string) => void;
@@ -22,6 +28,10 @@ export class PremiumBottomSheet {
   private backdrop: HTMLElement | null = null;
   private options: PremiumBottomSheetOptions;
   private currentEvent: MapEvent | null = null;
+  // Sprint 4.1: Request state management
+  private requestState: 'none' | 'pending' | 'accepted' | 'declined' | 'cancelled' | 'joined' = 'none';
+  private isRequestLoading = false;
+  private isEventOrganizer = false;
   private state: PremiumSheetState = 'closed';
   private isDragging = false;
   private dragStartY = 0;
@@ -323,6 +333,30 @@ export class PremiumBottomSheet {
         background: rgba(59, 130, 246, 0.4);
         cursor: not-allowed;
       }
+      /* Sprint 4.1: Join button states */
+      .premium-sheet-join-btn.joined {
+        background: var(--success);
+        color: white;
+        cursor: default;
+      }
+      .premium-sheet-join-btn.pending {
+        background: var(--warning);
+        color: white;
+      }
+      .premium-sheet-join-btn.declined {
+        background: var(--surface-secondary);
+        color: var(--text-tertiary);
+      }
+      .premium-sheet-join-btn.organizer {
+        background: var(--surface-tertiary);
+        color: var(--text-tertiary);
+        cursor: not-allowed;
+      }
+      .premium-sheet-join-btn.loading {
+        opacity: 0.7;
+        cursor: wait;
+      }
+
       
       .premium-sheet-secondary-actions {
         display: flex;
@@ -584,7 +618,9 @@ export class PremiumBottomSheet {
     });
   }
 
-  public show(event: MapEvent): void {
+  public show(event: MapEvent, requestState?: 'none' | 'pending' | 'accepted' | 'declined' | 'cancelled' | 'joined', isOrganizer = false): void {
+    this.requestState = requestState || 'none';
+    this.isEventOrganizer = isOrganizer;
     this.currentEvent = event;
     this.renderContent(event);
     this.animateToState('half');
@@ -719,8 +755,8 @@ export class PremiumBottomSheet {
         </div>
         
         <div class="premium-sheet-actions">
-          <button class="premium-sheet-join-btn" disabled>
-            Приєднатися (Скоро)
+          <button class="premium-sheet-join-btn" id="join-btn">
+            ${this.getJoinButtonText()}
           </button>
           <div class="premium-sheet-secondary-actions">
             <button class="premium-sheet-secondary-btn" id="share-btn">
@@ -738,12 +774,20 @@ export class PremiumBottomSheet {
     `;
 
     // Attach event handlers
-    const joinBtn = content.querySelector('.premium-sheet-join-btn') as HTMLButtonElement;
     const shareBtn = content.querySelector('#share-btn') as HTMLButtonElement;
     const saveBtn = content.querySelector('#save-btn') as HTMLButtonElement;
     const reportBtn = content.querySelector('#report-btn') as HTMLButtonElement;
 
-    joinBtn?.addEventListener('click', () => this.options.onJoin?.(event.id));
+    // Sprint 4.1: Join button handler
+    const joinBtn = this.container.querySelector('#join-btn') as HTMLButtonElement;
+    joinBtn?.addEventListener('click', async () => {
+      if (this.isEventOrganizer) return;
+      if (this.requestState === 'pending') {
+        this.options.onCancelRequest?.(event.id);
+      } else if (this.requestState === 'none') {
+        this.options.onJoin?.(event.id);
+      }
+    });
     shareBtn?.addEventListener('click', () => this.options.onShare?.(event.id));
     saveBtn?.addEventListener('click', () => this.options.onSave?.(event.id));
     reportBtn?.addEventListener('click', () => this.options.onReport?.(event.id));
@@ -792,6 +836,76 @@ export class PremiumBottomSheet {
     if (hoursUntil <= 24) return 'Сьогодні';
     if (hoursUntil <= 48) return 'Завтра';
     return 'Активне';
+  }
+
+
+  // Sprint 4.1: Join button helpers
+  private getJoinButtonText(): string {
+    if (this.isEventOrganizer) {
+      return 'Це ваша подія';
+    }
+    
+    switch (this.requestState) {
+      case 'pending':
+        return 'Заявку надіслано ✓';
+      case 'accepted':
+      case 'joined':
+        return 'Ви учасник ✓';
+      case 'declined':
+        return 'Відхилено - Спробувати знову';
+      default:
+        return 'Приєднатися';
+    }
+  }
+
+  private getJoinButtonClass(): string {
+    let classes = 'premium-sheet-join-btn';
+    
+    if (this.isEventOrganizer) {
+      classes += ' organizer';
+    } else {
+      switch (this.requestState) {
+        case 'pending':
+          classes += ' pending';
+          break;
+        case 'accepted':
+        case 'joined':
+          classes += ' joined';
+          break;
+        case 'declined':
+        case 'cancelled':
+          classes += ' declined';
+          break;
+        default:
+          classes += ' primary';
+      }
+    }
+    
+    return classes;
+  }
+
+  public setRequestState(state: 'none' | 'pending' | 'accepted' | 'declined' | 'cancelled' | 'joined'): void {
+    this.requestState = state;
+    this.updateJoinButton();
+  }
+
+  public setRequestLoading(loading: boolean): void {
+    this.isRequestLoading = loading;
+    this.updateJoinButton();
+  }
+
+  public setIsOrganizer(isOrganizer: boolean): void {
+    this.isEventOrganizer = isOrganizer;
+    this.updateJoinButton();
+  }
+
+  private updateJoinButton(): void {
+    const btn = this.container.querySelector('#join-btn') as HTMLButtonElement;
+    if (btn) {
+      btn.className = this.getJoinButtonClass();
+      btn.textContent = this.getJoinButtonText();
+      btn.disabled = this.isRequestLoading || this.isEventOrganizer || this.requestState === 'accepted' || this.requestState === 'joined' || this.requestState === 'cancelled';
+    }
   }
 
   public close(): void {

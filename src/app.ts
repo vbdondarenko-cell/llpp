@@ -16,6 +16,8 @@ import { LinkUpMap } from './map-sprint21';
 import { EventsService } from './events-service';
 // Sprint 2.4: Premium bottom sheet
 import { PremiumBottomSheet } from './premium-bottom-sheet';
+// Sprint 4.1: Join Request System
+import { JoinRequestService, RequestSubscriptionManager } from './requests/index';
 // Sprint 3.1: Premium Create Event Screen
 import { CreateEventPage } from './create-event';
 // Sprint 3.5: Instant Map Sync
@@ -898,8 +900,12 @@ function initMapComponents(location: Location): void {
 
   // Sprint 2.4: Initialize premium bottom sheet
   bottomSheetInstance = new PremiumBottomSheet(document.createElement('div'), {
+    // Sprint 4.1: Join request callbacks
     onJoin: (eventId) => {
       handleJoinEvent(eventId);
+    },
+    onCancelRequest: (eventId) => {
+      handleCancelRequest(eventId);
     },
     onShare: (_eventId) => {
       telegramAuth.hapticFeedback('light');
@@ -1015,15 +1021,96 @@ export function updateBottomSheet(): void {
 }
 
 // Sprint 2.4: Event join handling
-function handleJoinEvent(_eventId: string): void {
-  telegramAuth.hapticNotification('success');
-  telegramAuth.showAlert('Ви приєдналися до події!');
+// Sprint 4.1: Handle join event with request system
+async function handleJoinEvent(eventId: string): Promise<void> {
+  try {
+    // Show loading state
+    if (bottomSheetInstance) {
+      bottomSheetInstance.setRequestLoading(true);
+    }
+    
+    // Call join API
+    const result = await JoinRequestService.join(eventId);
+    
+    if (result.success) {
+      telegramAuth.hapticNotification('success');
+      telegramAuth.showAlert('Заявку надіслано! Очікуйте схвалення від організатора.');
+      
+      // Update button state
+      if (bottomSheetInstance) {
+        bottomSheetInstance.setRequestState('pending');
+      }
+      
+      // Subscribe to status changes for realtime updates
+      RequestSubscriptionManager.getSubscription(eventId, {
+        onMyStatusChange: (status) => {
+          if (bottomSheetInstance && status.status) {
+            bottomSheetInstance.setRequestState(status.status);
+          }
+        },
+      }).subscribe();
+    } else {
+      telegramAuth.hapticNotification('error');
+      telegramAuth.showAlert(result.error || 'Помилка приєднання');
+    }
+  } catch (err) {
+    console.error('Join event error:', err);
+    telegramAuth.hapticNotification('error');
+    telegramAuth.showAlert('Помилка приєднання');
+  } finally {
+    if (bottomSheetInstance) {
+      bottomSheetInstance.setRequestLoading(false);
+    }
+  }
+}
+
+// Sprint 4.1: Handle cancel request
+async function handleCancelRequest(eventId: string): Promise<void> {
+  try {
+    if (bottomSheetInstance) {
+      bottomSheetInstance.setRequestLoading(true);
+    }
+    
+    const result = await JoinRequestService.cancel(eventId);
+    
+    if (result.success) {
+      telegramAuth.hapticNotification('success');
+      telegramAuth.showAlert('Заявку скасовано');
+      
+      if (bottomSheetInstance) {
+        bottomSheetInstance.setRequestState('none');
+      }
+    } else {
+      telegramAuth.hapticNotification('error');
+      telegramAuth.showAlert(result.error || 'Помилка скасування');
+    }
+  } catch (err) {
+    console.error('Cancel request error:', err);
+    telegramAuth.hapticNotification('error');
+    telegramAuth.showAlert('Помилка скасування');
+  } finally {
+    if (bottomSheetInstance) {
+      bottomSheetInstance.setRequestLoading(false);
+    }
+  }
 }
 
 // Sprint 2.4: Handle marker tap - show premium bottom sheet
-function handleMarkerTap(event: MapEvent): void {
+async function handleMarkerTap(event: MapEvent): Promise<void> {
   if (!bottomSheetInstance) return;
-  bottomSheetInstance.show(event);
+  
+  // Sprint 4.1: Fetch current request state
+  const currentUserId = state.profile?.id;
+  const isOrganizer = currentUserId === event.organizer.id;
+  
+  let requestState: 'none' | 'pending' | 'accepted' | 'declined' | 'cancelled' | 'joined' = 'none';
+  
+  if (!isOrganizer && currentUserId) {
+    const status = await JoinRequestService.getMyRequestStatus(event.id);
+    requestState = status.state;
+  }
+  
+  bottomSheetInstance.show(event, requestState, isOrganizer);
 }
 
 function renderEventDetailsScreen(eventId: string, currentUserId: string | null): void {
