@@ -16,7 +16,8 @@ import { LinkUpMap } from './map-sprint21';
 import { EventsService } from './events-service';
 // Sprint 2.4: Premium bottom sheet
 import { PremiumBottomSheet } from './premium-bottom-sheet';
-import { renderEventCreationScreen } from './event-creation';
+// Sprint 3.1: Premium Create Event Screen
+import { CreateEventPage } from './create-event';
 import { renderEventDetails, cleanupEventDetails } from './event-details';
 import { cleanup as cleanupChat } from './chat';
 import { renderPremiumScreen, cleanup as cleanupPremium } from './premium';
@@ -49,6 +50,8 @@ const state: AppState = {
 let mapInstance: LinkUpMap | null = null;
 // Sprint 2.4: Premium bottom sheet instance
 let bottomSheetInstance: PremiumBottomSheet | null = null;
+// Sprint 3.1: Premium Create Event Page instance
+let createEventPageInstance: CreateEventPage | null = null;
 let mapContainer: HTMLElement | null = null;
 let bottomSheetContainer: HTMLElement | null = null;
 
@@ -633,18 +636,35 @@ function renderCreateEvent(): void {
   state.currentView = 'create';
   if (!appElement) return;
   
+  // Clean up previous instances
+  cleanupEventDetails();
+  cleanupChat();
+  if (createEventPageInstance) {
+    createEventPageInstance.destroy();
+  }
+  
   appElement.innerHTML = '';
   
-  renderEventCreationScreen(appElement, {}, {
-    onSuccess: (eventId) => {
-      console.log('Event created:', eventId);
-      telegramAuth.showAlert('Подію створено!');
+  // Create container for the new page
+  const pageContainer = document.createElement('div');
+  pageContainer.style.cssText = 'height: 100%; width: 100%;';
+  appElement.appendChild(pageContainer);
+  
+  // Use the new premium CreateEventPage
+  createEventPageInstance = new CreateEventPage(pageContainer, {
+    onBack: () => {
       state.currentView = 'map';
       renderMap();
     },
-    onCancel: () => {
+    onEventCreated: (eventId) => {
+      console.log('Event created:', eventId);
+      telegramAuth.showAlert('Подію створено!');
+      createEventPageInstance = null;
       state.currentView = 'map';
       renderMap();
+    },
+    onError: (error) => {
+      telegramAuth.showAlert(error);
     },
   });
 }
