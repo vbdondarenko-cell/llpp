@@ -1,4 +1,4 @@
-// LinkUp Alpha - Sprint 9 Main Application
+// LinkUp Alpha - Sprint 10 Main Application
 import type { AppState, Location, MapEvent, EventCategory } from './types';
 import { telegramAuth } from './telegram-auth';
 import './styles.css';
@@ -24,6 +24,10 @@ import { renderAchievementsScreen, cleanupAchievements } from './achievements';
 import { renderProfileScreen, cleanupProfile } from './profile';
 import { renderSettingsScreen, cleanupSettings } from './settings';
 import { renderAdminPanel, cleanupAdmin } from './admin-panel';
+import {
+  createInterestCard,
+  injectInterestCardStyles,
+} from './components/index';
 import type { ChatListItem } from './types';
 
 // App state
@@ -208,6 +212,10 @@ function renderOnboardingStep(): void {
   const isLastStep = currentOnboardingStep === onboardingSteps.length - 1;
   const isInterestStep = step.id === 3;
   const progressPercent = ((currentOnboardingStep + 1) / onboardingSteps.length) * 100;
+  const selectedCount = state.userInterests.length;
+
+  // Inject premium styles
+  injectInterestCardStyles();
 
   appElement.innerHTML = `
     <div class="onboarding-screen ${isInterestStep ? 'interests-step' : ''}">
@@ -227,7 +235,7 @@ function renderOnboardingStep(): void {
         ` : '<div style="width: 44px;"></div>'}
       </div>
 
-      <div class="onboarding-content">
+      <div class="onboarding-content ${isInterestStep ? 'interests-content' : ''}">
         ${isInterestStep ? renderInterestSelectionPremium() : `
           <div class="onboarding-icon">${step.icon}</div>
           <h1 class="onboarding-title">${step.title}</h1>
@@ -238,16 +246,18 @@ function renderOnboardingStep(): void {
 
       <div class="onboarding-footer">
         ${isInterestStep ? `
-          <div class="interest-footer-content">
-            <div class="interest-counter" id="interest-counter">
-              <span class="counter-number">0</span>
-              <span class="counter-divider"> / </span>
-              <span class="counter-total">3</span>
-              <span class="counter-label"> обрано</span>
+          <div class="interest-premium-footer">
+            <div class="interest-counter-premium">
+              <span class="counter-number-premium ${selectedCount >= 3 ? 'ready' : ''}">${selectedCount}</span>
+              <span class="counter-total-premium"> / 3</span>
+              <span class="counter-label-premium ${selectedCount >= 3 ? 'ready' : ''}">обрано ${selectedCount >= 3 ? '✓' : ''}</span>
             </div>
-            <button class="primary-btn premium-btn" id="onboarding-next" disabled>
-              <span class="btn-text">Оберіть щонайменше 3 інтереси</span>
-              <span class="btn-text-ready" style="display: none;">Продовжити</span>
+            <button class="premium-btn-final" id="onboarding-next" ${selectedCount < 3 ? 'disabled' : ''}>
+              <div class="btn-shimmer"></div>
+              <div class="btn-text-container">
+                <span class="btn-helper">Оберіть щонайменше 3 інтереси</span>
+                <span class="btn-ready-text">Продовжити</span>
+              </div>
             </button>
           </div>
         ` : `
@@ -314,18 +324,17 @@ function renderInterestSelectionPremium(): string {
         <h1 class="interests-title">Оберіть інтереси</h1>
         <p class="interests-subtitle">Оберіть інтереси, щоб бачити лише події, які вам дійсно цікаві.</p>
       </div>
-      <div class="interests-grid-premium">
-        ${state.interests.map(interest => `
-          <button class="interest-chip-premium" data-id="${interest.id}">
-            <span class="chip-icon">${interest.icon || '•'}</span>
-            <span class="chip-label">${interest.name}</span>
-            <div class="chip-check">
-              <svg viewBox="0 0 24 24" fill="currentColor">
-                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-              </svg>
-            </div>
-          </button>
-        `).join('')}
+      <div class="interest-grid-container">
+        <div class="interest-grid">
+          ${state.interests.map((interest, index) => {
+            const isSelected = state.userInterests.some(i => i.id === interest.id);
+            return createInterestCard({
+              interest,
+              isSelected,
+              animationDelay: index * 30,
+            });
+          }).join('')}
+        </div>
       </div>
     </div>
   `;
@@ -361,11 +370,11 @@ function attachOnboardingListeners(): void {
     }
   });
 
-  // Premium interest chips
-  const premiumChips = document.querySelectorAll('.interest-chip-premium');
-  premiumChips.forEach(chip => {
-    chip.addEventListener('click', () => {
-      const id = (chip as HTMLElement).dataset.id;
+  // Premium interest cards
+  const interestCards = document.querySelectorAll('.interest-card');
+  interestCards.forEach(card => {
+    card.addEventListener('click', () => {
+      const id = (card as HTMLElement).dataset.id;
       if (!id) return;
 
       const interest = state.interests.find(i => i.id === id);
@@ -373,7 +382,7 @@ function attachOnboardingListeners(): void {
 
       const existingIndex = state.userInterests.findIndex(i => i.id === id);
       
-      // Haptic feedback
+      // Haptic feedback based on action
       if (existingIndex >= 0) {
         telegramAuth.hapticFeedback('light');
       } else {
@@ -382,46 +391,39 @@ function attachOnboardingListeners(): void {
 
       if (existingIndex >= 0) {
         state.userInterests.splice(existingIndex, 1);
-        chip.classList.remove('selected');
+        card.classList.remove('selected');
       } else {
         state.userInterests.push(interest);
-        chip.classList.add('selected');
+        card.classList.add('selected');
         
         // Add spring animation
-        chip.classList.add('chip-pop');
-        setTimeout(() => chip.classList.remove('chip-pop'), 300);
+        card.classList.add('spring');
+        setTimeout(() => card.classList.remove('spring'), 400);
       }
 
-      // Update counter
-      const counter = document.getElementById('interest-counter');
-      if (counter) {
-        const count = state.userInterests.length;
-        counter.innerHTML = `
-          <span class="counter-number ${count >= 3 ? 'counter-ready' : ''}">${count}</span>
-          <span class="counter-divider"> / </span>
-          <span class="counter-total">3</span>
-          <span class="counter-label"> обрано ${count >= 3 ? '✓' : ''}</span>
-        `;
+      const count = state.userInterests.length;
+
+      // Update counter with animation
+      const counterNumber = document.querySelector('.counter-number-premium');
+      if (counterNumber) {
+        counterNumber.textContent = count.toString();
+        counterNumber.classList.toggle('ready', count >= 3);
+        counterNumber.classList.add('animate');
+        setTimeout(() => counterNumber.classList.remove('animate'), 300);
       }
 
-      // Update button
-      const nextBtn = document.getElementById('onboarding-next') as HTMLButtonElement;
-      if (nextBtn) {
-        const isReady = state.userInterests.length >= 3;
-        nextBtn.disabled = !isReady;
-        
-        const btnText = nextBtn.querySelector('.btn-text') as HTMLElement;
-        const btnTextReady = nextBtn.querySelector('.btn-text-ready') as HTMLElement;
-        
-        if (isReady) {
-          nextBtn.classList.add('btn-ready');
-          if (btnText) btnText.style.display = 'none';
-          if (btnTextReady) btnTextReady.style.display = 'inline';
-        } else {
-          nextBtn.classList.remove('btn-ready');
-          if (btnText) btnText.style.display = 'inline';
-          if (btnTextReady) btnTextReady.style.display = 'none';
-        }
+      const counterLabel = document.querySelector('.counter-label-premium');
+      if (counterLabel) {
+        counterLabel.classList.toggle('ready', count >= 3);
+        counterLabel.textContent = `обрано ${count >= 3 ? '✓' : ''}`;
+      }
+
+      // Update button state
+      const btn = document.getElementById('onboarding-next');
+      if (btn) {
+        const isReady = count >= 3;
+        btn.toggleAttribute('disabled', !isReady);
+        btn.classList.toggle('ready', isReady);
       }
     });
   });
