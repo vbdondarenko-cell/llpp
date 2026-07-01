@@ -1,16 +1,18 @@
 // Create Event Location Component
 import type { EventLocation } from './types';
+import { LocationPicker, type SelectedLocation } from '../location';
 
 export interface CreateEventLocationCallbacks {
   onLocationChange: (location: EventLocation | null) => void;
   onUseCurrentLocation: () => void;
-  onOpenMapPicker?: () => void;
 }
 
 export class CreateEventLocation {
   private container: HTMLElement;
   private callbacks: CreateEventLocationCallbacks;
   private currentLocation: EventLocation | null = null;
+  private locationPicker: LocationPicker | null = null;
+  private pickerContainer: HTMLElement | null = null;
 
   constructor(container: HTMLElement, callbacks: CreateEventLocationCallbacks) {
     this.container = container;
@@ -186,7 +188,7 @@ export class CreateEventLocation {
     });
 
     mapPickerBtn?.addEventListener('click', () => {
-      this.callbacks.onOpenMapPicker?.();
+      this.openLocationPicker();
     });
 
     removeLocBtn?.addEventListener('click', () => {
@@ -213,6 +215,55 @@ export class CreateEventLocation {
     });
   }
 
+  private openLocationPicker(): void {
+    this.pickerContainer = document.createElement('div');
+    document.body.appendChild(this.pickerContainer);
+
+    const mapToken = (import.meta as { env: { VITE_MAPBOX_TOKEN?: string } }).env.VITE_MAPBOX_TOKEN || '';
+
+    this.locationPicker = new LocationPicker(
+      this.pickerContainer,
+      {
+        onLocationSelected: (location: SelectedLocation) => {
+          this.setLocation({
+            latitude: location.latitude,
+            longitude: location.longitude,
+            address: location.formattedAddress,
+            name: location.street,
+            formattedAddress: location.formattedAddress,
+            city: location.city,
+            country: location.country,
+            placeId: location.placeId,
+          });
+          this.closeLocationPicker();
+        },
+        onCancel: () => {
+          this.closeLocationPicker();
+        },
+      },
+      {
+        accessToken: mapToken,
+        initialLocation: this.currentLocation ? {
+          latitude: this.currentLocation.latitude,
+          longitude: this.currentLocation.longitude,
+        } : undefined,
+      }
+    );
+
+    this.locationPicker.init();
+  }
+
+  private closeLocationPicker(): void {
+    if (this.locationPicker) {
+      this.locationPicker.destroy();
+      this.locationPicker = null;
+    }
+    if (this.pickerContainer) {
+      this.pickerContainer.remove();
+      this.pickerContainer = null;
+    }
+  }
+
   private addStyles(): void {
     const style = document.createElement('style');
     style.textContent = `
@@ -232,11 +283,12 @@ export class CreateEventLocation {
 
   public setCurrentLocation(latitude: number, longitude: number, address: string): void {
     this.setLoading(false);
-    this.currentLocation = {
-      latitude,
-      longitude,
-      address,
-    };
+    this.setLocation({ latitude, longitude, address });
+  }
+
+  public setLocation(location: EventLocation): void {
+    this.setLoading(false);
+    this.currentLocation = location;
     this.updateLocationPreview();
     this.callbacks.onLocationChange(this.currentLocation);
   }
@@ -283,7 +335,7 @@ export class CreateEventLocation {
     if (preview && nameEl && addrEl && this.currentLocation) {
       preview.style.display = 'block';
       nameEl.textContent = this.currentLocation.name || 'Selected Location';
-      addrEl.textContent = this.currentLocation.address;
+      addrEl.textContent = this.currentLocation.formattedAddress || this.currentLocation.address;
     }
   }
 

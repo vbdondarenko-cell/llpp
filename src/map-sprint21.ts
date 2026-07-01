@@ -635,6 +635,12 @@ export class LinkUpMap {
     this.onEventClick = callback;
   }
 
+  public getCenter(): { lat: number; lng: number } {
+    if (!this.map) return { lat: 0, lng: 0 };
+    const center = this.map.getCenter();
+    return { lat: center.lat, lng: center.lng };
+  }
+
   public resize(): void {
     if (this.map) {
       this.map.resize();

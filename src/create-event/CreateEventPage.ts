@@ -222,7 +222,6 @@ export class CreateEventPage {
           this.validateForm();
         },
         onUseCurrentLocation: () => this.handleUseCurrentLocation(),
-        onOpenMapPicker: () => this.handleOpenMapPicker(),
       });
     }
 
@@ -416,12 +415,6 @@ export class CreateEventPage {
     } else {
       this.callbacks.onError?.('Geolocation is not supported by your browser.');
     }
-  }
-
-  private handleOpenMapPicker(): void {
-    // In production, this would open a map picker interface
-    // For now, we'll use current location
-    this.handleUseCurrentLocation();
   }
 
   private async handleSubmit(): Promise<void> {

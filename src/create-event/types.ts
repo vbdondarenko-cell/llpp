@@ -36,6 +36,10 @@ export interface EventLocation {
   longitude: number;
   address: string;
   name?: string;
+  formattedAddress?: string;
+  city?: string;
+  country?: string;
+  placeId?: string;
 }
 
 export interface CreateEventResult {
