@@ -1,5 +1,6 @@
 // Bottom Sheet Component
-import type { BottomSheetState } from './types';
+import type { BottomSheetState, MapEvent } from './types';
+import { CATEGORY_COLORS, formatDistance, formatEventTime } from './events';
 
 export interface BottomSheetCallbacks {
   onStateChange?: (state: BottomSheetState) => void;
@@ -150,10 +151,6 @@ export class BottomSheet {
 }
 
 // Event Card Component
-import type { MapEvent } from './types';
-import { CATEGORY_COLORS } from './events';
-import { formatDistance, formatEventTime } from './events';
-
 export interface EventCardCallbacks {
   onJoin?: (eventId: string) => void;
   onClick?: (event: MapEvent) => void;
