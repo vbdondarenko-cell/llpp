@@ -1,4 +1,4 @@
-// LinkUp Alpha - Sprint 6 Main Application
+// LinkUp Alpha - Sprint 7 Main Application
 import type { AppState, Location, MapEvent, EventCategory } from './types';
 import { telegramAuth } from './telegram-auth';
 import './styles.css';
@@ -20,6 +20,7 @@ import { renderEventCreationScreen } from './event-creation';
 import { renderEventDetails, cleanupEventDetails } from './event-details';
 import { cleanup as cleanupChat } from './chat';
 import { renderPremiumScreen, cleanup as cleanupPremium } from './premium';
+import { renderAchievementsScreen, cleanupAchievements } from './achievements';
 import type { ChatListItem } from './types';
 
 // App state
@@ -414,6 +415,11 @@ async function renderMap(): Promise<void> {
         </div>
         <h1 class="header-title">LinkUp</h1>
         <div class="header-right">
+          <button class="icon-btn" id="achievements-btn">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1c1.63-.33 2.98-1.46 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2zM5 8V7h2v3.82C5.84 10.4 5 9.3 5 8zm14 0c0 1.3-.84 2.4-2 2.82V7h2v1z"/>
+            </svg>
+          </button>
           <button class="icon-btn" id="search-btn">
             <svg viewBox="0 0 24 24" fill="currentColor">
               <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
@@ -532,6 +538,22 @@ function renderPremium(): void {
   });
 }
 
+function renderAchievements(): void {
+  if (!appElement) return;
+  
+  cleanupEventDetails();
+  cleanupChat();
+  cleanupPremium();
+  cleanupAchievements();
+  
+  renderAchievementsScreen(appElement, {
+    onBack: () => {
+      state.currentView = 'map';
+      renderMap();
+    },
+  });
+}
+
 function initNavListeners(): void {
   if (!appElement) return;
   
@@ -585,6 +607,11 @@ function initMapComponents(location: Location): void {
     onStateChange: (newState) => {
       state.bottomSheetState = newState;
     },
+  });
+
+  // Achievements button
+  document.getElementById('achievements-btn')?.addEventListener('click', () => {
+    renderAchievements();
   });
 
   // Load initial events

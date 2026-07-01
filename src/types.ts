@@ -60,7 +60,7 @@ export interface OnboardingStep {
   icon: string;
 }
 
-export type ViewType = 'splash' | 'onboarding' | 'home' | 'map' | 'create' | 'premium';
+export type ViewType = 'splash' | 'onboarding' | 'home' | 'map' | 'create' | 'premium' | 'achievements';
 
 export interface AppState {
   currentView: ViewType;
@@ -320,4 +320,50 @@ export interface PurchaseHistoryResult {
   success: boolean;
   error?: string;
   purchases: PurchaseHistory[];
+}
+
+// Achievement Types
+export type AchievementCategory = 'events' | 'social' | 'premium' | 'exploration';
+
+export interface Achievement {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: AchievementCategory;
+  requirement_type: string;
+  requirement_value: number;
+  reward_points: number;
+  is_hidden: boolean;
+}
+
+export interface UserAchievement extends Achievement {
+  is_unlocked: boolean;
+  unlocked_at: string | null;
+  progress: number;
+  progress_percentage: number;
+}
+
+export interface AchievementNotification {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  icon: string;
+  reward_points: number;
+}
+
+export interface AchievementsResult {
+  success: boolean;
+  error?: string;
+  achievements: UserAchievement[];
+  total_count: number;
+  unlocked_count: number;
+}
+
+export interface AchievementCheckResult {
+  success: boolean;
+  error?: string;
+  unlocked: AchievementNotification[];
 }
