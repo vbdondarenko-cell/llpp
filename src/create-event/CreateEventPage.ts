@@ -157,7 +157,27 @@ export class CreateEventPage {
           this.markAsChanged();
           this.validateForm();
         },
+        onUploadStart: () => {
+          // Disable submit while uploading
+        },
+        onUploadComplete: (url) => {
+          this.draft.coverImage = url;
+          this.validateForm();
+        },
+        onUploadError: (error) => {
+          console.error('Upload error:', error);
+        },
+        onValidationChange: (hasImage) => {
+          // Update validation based on image upload status
+          if (hasImage) {
+            this.validateForm();
+          }
+        },
       });
+      
+      // Set userId for storage path (use telegram_id or temp id)
+      const telegramId = localStorage.getItem('telegram_id') || 'temp';
+      this.coverComponent.setUserId(telegramId);
     }
 
     if (detailsSection) {
