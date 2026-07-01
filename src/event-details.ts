@@ -14,11 +14,13 @@ import {
   formatRequestTime,
   getStatusText,
 } from './requests';
-import type { MapEvent, UserRequestStatus, EventRequestsResponse, EventRequest } from './types';
+import { createOrGetChat, getMyChats } from './chat-api';
+import type { MapEvent, UserRequestStatus, EventRequestsResponse, EventRequest, ChatListItem } from './types';
 
 export interface EventDetailsCallbacks {
   onBack?: () => void;
   onEventDeleted?: () => void;
+  onOpenChat?: (chat: ChatListItem) => void;
 }
 
 interface EventDetailsState {
@@ -27,6 +29,7 @@ interface EventDetailsState {
   requestStatus: UserRequestStatus;
   requests: EventRequestsResponse | null;
   isLoading: boolean;
+  chat: ChatListItem | null;
 }
 
 let state: EventDetailsState = {
@@ -35,6 +38,7 @@ let state: EventDetailsState = {
   requestStatus: { has_request: false },
   requests: null,
   isLoading: false,
+  chat: null,
 };
 
 let callbacks: EventDetailsCallbacks = {};
@@ -54,6 +58,7 @@ export async function renderEventDetails(
     requestStatus: { has_request: false },
     requests: null,
     isLoading: true,
+    chat: null,
   };
 
   container.innerHTML = `
@@ -98,6 +103,14 @@ export async function renderEventDetails(
         state.requestStatus = status;
         updateRequestStatusUI(container);
       });
+    }
+
+    // Check if user has access to chat
+    if (state.requestStatus.status === 'accepted') {
+      const chatsResult = await getMyChats();
+      if (chatsResult.success) {
+        state.chat = chatsResult.chats.find(c => c.event_id === eventId) || null;
+      }
     }
   }
 
@@ -299,6 +312,14 @@ function renderUserAction(): string {
           </svg>
           <span>Ви учасник!</span>
         </div>
+        ${state.chat ? `
+          <button class="action-btn primary" id="open-chat-btn">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
+              <path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
+            </svg>
+            Відкрити чат
+          </button>
+        ` : ''}
         <button class="action-btn danger" id="leave-event-btn">
           Покинути подію
         </button>
@@ -450,12 +471,20 @@ function attachEventDetailsListeners(container: HTMLElement): void {
     
     if (result.success) {
       state.requestStatus = { has_request: false };
+      state.chat = null;
       telegramAuth.hapticNotification('success');
       telegramAuth.showAlert('Ви покинули подію');
       updateRequestStatusUI(container);
     } else {
       telegramAuth.hapticNotification('error');
       telegramAuth.showAlert(result.error || 'Помилка');
+    }
+  });
+
+  // Open chat button
+  document.getElementById('open-chat-btn')?.addEventListener('click', () => {
+    if (state.chat) {
+      callbacks.onOpenChat?.(state.chat);
     }
   });
 
@@ -472,6 +501,14 @@ function attachEventDetailsListeners(container: HTMLElement): void {
       
       if (result.success) {
         telegramAuth.hapticNotification('success');
+        
+        // Auto-create chat and add user
+        const chatResult = await createOrGetChat(state.event.id, state.event.title);
+        if (chatResult.success && chatResult.chat_id) {
+          // User will be added via backend trigger
+          telegramAuth.showAlert('Учасника додано! Чат буде доступний.');
+        }
+        
         // Refresh requests
         state.requests = await getEventRequests(state.event.id);
         updateRequestsUI(container);

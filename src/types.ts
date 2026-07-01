@@ -179,3 +179,104 @@ export interface UserRequestStatus {
   status?: RequestStatus;
   created_at?: string;
 }
+
+// Chat Types
+export type MessageType = 'text' | 'image' | 'system';
+
+export interface Chat {
+  id: string;
+  event_id: string;
+  name: string;
+  is_group: boolean;
+  created_by: string;
+  expires_at: string;
+  archived_at: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMember {
+  id: string;
+  user_id: string;
+  role: 'organizer' | 'member';
+  joined_at: string;
+  last_read_at: string;
+  unread_count: number;
+  is_active: boolean;
+  is_online?: boolean;
+  profile?: {
+    id: string;
+    username: string | null;
+    first_name: string | null;
+    avatar_url: string | null;
+  };
+}
+
+export interface Message {
+  id: string;
+  chat_id: string;
+  sender_id: string;
+  content: string;
+  message_type: MessageType;
+  metadata: Record<string, unknown>;
+  is_read: boolean;
+  read_by: string[];
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+  sender?: {
+    id: string;
+    username: string | null;
+    first_name: string | null;
+    avatar_url: string | null;
+  };
+}
+
+export interface ChatListItem {
+  id: string;
+  name: string;
+  event_id: string;
+  expires_at: string;
+  is_active: boolean;
+  unread_count: number;
+  last_message: {
+    content: string;
+    message_type: MessageType;
+    created_at: string;
+    sender_id: string;
+  } | null;
+  member_count: number;
+}
+
+export interface ChatResult {
+  success: boolean;
+  error?: string;
+  chat_id?: string;
+  expires_at?: string;
+  already_exists?: boolean;
+}
+
+export interface MessageResult {
+  success: boolean;
+  error?: string;
+  message?: Message;
+}
+
+export interface MessagesResult {
+  success: boolean;
+  error?: string;
+  messages: Message[];
+}
+
+export interface ChatsResult {
+  success: boolean;
+  error?: string;
+  chats: ChatListItem[];
+}
+
+export interface MembersResult {
+  success: boolean;
+  error?: string;
+  members: ChatMember[];
+}

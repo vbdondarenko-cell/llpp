@@ -18,6 +18,8 @@ import { LinkUpMap } from './map';
 import { BottomSheet, createEventCardList } from './components';
 import { renderEventCreationScreen } from './event-creation';
 import { renderEventDetails, cleanupEventDetails } from './event-details';
+import { cleanup as cleanupChat } from './chat';
+import type { ChatListItem } from './types';
 
 // App state
 const state: AppState = {
@@ -637,6 +639,27 @@ function renderEventDetailsScreen(eventId: string, currentUserId: string | null)
     onBack: () => {
       renderMap();
     },
+    onOpenChat: (chat: ChatListItem) => {
+      renderChatScreen(chat, currentUserId);
+    },
+  });
+}
+
+function renderChatScreen(chat: ChatListItem, currentUserId: string | null): void {
+  if (!appElement || !currentUserId) return;
+  
+  cleanupChat();
+  
+  const container = appElement;
+  import('./chat').then(({ renderChatScreen }) => {
+    renderChatScreen(container, chat, currentUserId, {
+      onBack: () => {
+        renderEventDetailsScreen(chat.event_id, currentUserId);
+      },
+      onArchived: () => {
+        renderEventDetailsScreen(chat.event_id, currentUserId);
+      },
+    });
   });
 }
 
