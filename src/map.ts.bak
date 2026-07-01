@@ -1,8 +1,17 @@
-// Mapbox Map Integration - Legacy file (kept for compatibility)
-// Sprint 2.1 uses map-sprint21.ts instead
-
+// Mapbox Map Integration
 import type { MapEvent, Location, EventCategory } from './types';
 import { CATEGORY_COLORS } from './events';
+
+declare global {
+  interface Window {
+    mapboxgl?: {
+      Map: new (config: unknown) => MapInstance;
+      NavigationControl: new () => unknown;
+      GeolocateControl: new (config: unknown) => unknown;
+      accessToken: string;
+    };
+  }
+}
 
 interface MapInstance {
   on: (event: string, callback: () => void) => void;

@@ -1,22 +1,27 @@
 // LinkUp Alpha - Sprint 10 Main Application
-import type { AppState, Location, MapEvent, EventCategory } from './types';
+import type { AppState, Location, MapEvent } from './types';
 import { telegramAuth } from './telegram-auth';
 import './styles.css';
 import {
   getProfile,
-  createProfile,
   updateProfile,
   getInterests,
   getUserInterests,
   setUserInterests,
 } from './supabase';
-import {
-  CATEGORIES,
-  getEventsNearby,
-} from './events';
-import { LinkUpMap } from './map';
-import { BottomSheet, createEventCardList } from './components';
-import { renderEventCreationScreen } from './event-creation';
+import { CATEGORIES } from './events';
+// Sprint 2.1: Use new map implementation
+import { LinkUpMap } from './map-sprint21';
+// Sprint 2.2: Events service
+import { EventsService } from './events-service';
+// Sprint 2.4: Premium bottom sheet
+import { PremiumBottomSheet } from './premium-bottom-sheet';
+// Sprint 4.1: Join Request System
+import { JoinRequestService, RequestSubscriptionManager } from './requests/index';
+// Sprint 3.1: Premium Create Event Screen
+import { CreateEventPage } from './create-event';
+// Sprint 3.5: Instant Map Sync
+import { getMapSync, getEventSync, showSuccessToast, type MapSync, type EventSync } from './events/index';
 import { renderEventDetails, cleanupEventDetails } from './event-details';
 import { cleanup as cleanupChat } from './chat';
 import { renderPremiumScreen, cleanup as cleanupPremium } from './premium';
@@ -47,8 +52,16 @@ const state: AppState = {
 
 // Map instance
 let mapInstance: LinkUpMap | null = null;
-let bottomSheetInstance: BottomSheet | null = null;
+// Sprint 2.4: Premium bottom sheet instance
+let bottomSheetInstance: PremiumBottomSheet | null = null;
+// Sprint 3.1: Premium Create Event Page instance
+let createEventPageInstance: CreateEventPage | null = null;
+// Sprint 3.5: Map and Event Sync instances
+let mapSyncInstance: MapSync | null = null;
+let eventSyncInstance: EventSync | null = null;
 let mapContainer: HTMLElement | null = null;
+// Sprint Alpha: Map initialization guard to prevent duplicate map instances
+let isMapInitialized = false;
 let bottomSheetContainer: HTMLElement | null = null;
 
 // Default location (Kyiv)
@@ -115,43 +128,75 @@ async function authenticateUser(): Promise<void> {
   state.isLoading = true;
 
   try {
+    // First, try to authenticate via Edge Function if Telegram WebApp is available
+    if (telegramAuth.isAvailable()) {
+      const authResult = await telegramAuth.authenticate();
+      
+      if (authResult.success && authResult.user) {
+        // Auth succeeded via Edge Function
+        console.log('Authenticated via Edge Function:', authResult.user);
+        
+        // Now get the profile
+        const profile = await getProfile();
+        if (profile) {
+          state.profile = profile;
+          state.isAuthenticated = true;
+
+          if (profile.has_completed_onboarding) {
+            initUserLocation();
+          } else {
+            await loadInterests();
+            renderOnboarding();
+          }
+        } else {
+          // Profile doesn't exist, create it
+          await loadInterests();
+          renderOnboarding();
+        }
+        state.isLoading = false;
+        return;
+      } else if (authResult.error && authResult.error !== 'No Telegram WebApp') {
+        console.log('Edge Function auth failed:', authResult.error);
+        // Fall through to local authentication
+      }
+    }
+
+    // Fallback: Try local authentication using Telegram user data
     const userData = telegramAuth.getUserData();
 
     if (!userData) {
       console.log('Running in demo mode');
       renderOnboarding();
+      state.isLoading = false;
       return;
     }
 
-    const profileId = await createProfile(
-      userData.telegramId,
-      userData.username,
-      userData.firstName,
-      userData.lastName,
-      userData.avatarUrl
-    );
+    // Check if profile exists in localStorage (for demo mode)
+    const storedTelegramId = localStorage.getItem('telegram_id');
+    if (storedTelegramId && parseInt(storedTelegramId) === userData.telegramId) {
+      // Try to get existing profile
+      const profile = await getProfile();
+      if (profile) {
+        state.profile = profile;
+        state.isAuthenticated = true;
 
-    if (!profileId) {
-      console.error('Failed to create profile');
-      renderOnboarding();
-      return;
-    }
-
-    const profile = await getProfile();
-    if (profile) {
-      state.profile = profile;
-      state.isAuthenticated = true;
-
-      if (profile.has_completed_onboarding) {
-        initUserLocation();
-      } else {
-        await loadInterests();
-        renderOnboarding();
+        if (profile.has_completed_onboarding) {
+          initUserLocation();
+        } else {
+          await loadInterests();
+          renderOnboarding();
+        }
+        state.isLoading = false;
+        return;
       }
-    } else {
-      await loadInterests();
-      renderOnboarding();
     }
+
+    // Store telegram_id for demo mode
+    localStorage.setItem('telegram_id', userData.telegramId.toString());
+    
+    // Profile doesn't exist, go to onboarding
+    await loadInterests();
+    renderOnboarding();
   } catch (error) {
     console.error('Authentication error:', error);
     await loadInterests();
@@ -252,16 +297,20 @@ function renderOnboardingStep(): void {
               <span class="counter-total-premium"> / 3</span>
               <span class="counter-label-premium ${selectedCount >= 3 ? 'ready' : ''}">обрано ${selectedCount >= 3 ? '✓' : ''}</span>
             </div>
-            <button class="premium-btn-final" id="onboarding-next" ${selectedCount < 3 ? 'disabled' : ''}>
-              <div class="btn-shimmer"></div>
-              <div class="btn-text-container">
-                <span class="btn-helper">Оберіть щонайменше 3 інтереси</span>
-                <span class="btn-ready-text">Продовжити</span>
-              </div>
+            <button class="premium-btn-final" id="onboarding-next" ${selectedCount < 3 || state.isLoading ? 'disabled' : ''}>
+              ${state.isLoading ? `
+                <div class="btn-spinner"></div>
+              ` : `
+                <div class="btn-shimmer"></div>
+                <div class="btn-text-container">
+                  <span class="btn-helper">Оберіть щонайменше 3 інтереси</span>
+                  <span class="btn-ready-text">Продовжити</span>
+                </div>
+              `}
             </button>
           </div>
         ` : `
-          <button class="primary-btn" id="onboarding-next">
+          <button class="primary-btn" id="onboarding-next" ${state.isLoading ? 'disabled' : ''}>
             ${isLastStep ? 'Почати' : 'Далі'}
           </button>
         `}
@@ -343,22 +392,36 @@ function renderInterestSelectionPremium(): string {
 function attachOnboardingListeners(): void {
   const nextBtn = document.getElementById('onboarding-next');
   const backBtn = document.getElementById('onboarding-back');
+  
+  let isProcessing = false;
 
   nextBtn?.addEventListener('click', async () => {
+    // Prevent double click
+    if (isProcessing || state.isLoading) return;
+    isProcessing = true;
+    
+    // Disable button visually
+    nextBtn.setAttribute('disabled', 'true');
+    
     telegramAuth.hapticFeedback('medium');
 
-    if (currentOnboardingStep === 2) {
-      const selectedInterests = state.userInterests.map(i => i.id);
-      if (selectedInterests.length >= 3) {
-        await setUserInterests(selectedInterests);
+    try {
+      if (currentOnboardingStep === 2) {
+        const selectedInterests = state.userInterests.map(i => i.id);
+        if (selectedInterests.length >= 3) {
+          await setUserInterests(selectedInterests);
+        }
       }
-    }
 
-    if (currentOnboardingStep === onboardingSteps.length - 1) {
-      await completeOnboarding();
-    } else {
-      currentOnboardingStep++;
-      renderOnboardingStep();
+      if (currentOnboardingStep === onboardingSteps.length - 1) {
+        await completeOnboarding();
+      } else {
+        currentOnboardingStep++;
+        renderOnboardingStep();
+      }
+    } finally {
+      isProcessing = false;
+      nextBtn.removeAttribute('disabled');
     }
   });
 
@@ -431,12 +494,27 @@ function attachOnboardingListeners(): void {
 
 async function completeOnboarding(): Promise<void> {
   state.isLoading = true;
-  await updateProfile(undefined, undefined, undefined, undefined, undefined, undefined, true);
-  const selectedIds = state.userInterests.map(i => i.id);
-  await setUserInterests(selectedIds);
-  state.isLoading = false;
-  telegramAuth.hapticNotification('success');
-  initUserLocation();
+  
+  try {
+    // Update profile with onboarding completed
+    await updateProfile(undefined, undefined, undefined, undefined, undefined, undefined, true);
+    
+    // Save interests
+    const selectedIds = state.userInterests.map(i => i.id);
+    if (selectedIds.length >= 3) {
+      await setUserInterests(selectedIds);
+    }
+    
+    state.isLoading = false;
+    telegramAuth.hapticNotification('success');
+    initUserLocation();
+  } catch (error) {
+    console.error('Complete onboarding error:', error);
+    state.isLoading = false;
+    telegramAuth.showAlert('Помилка завершення реєстрації');
+    // Still continue to map even if save failed
+    initUserLocation();
+  }
 }
 
 // ============ MAP SCREEN ============
@@ -567,18 +645,75 @@ function renderCreateEvent(): void {
   state.currentView = 'create';
   if (!appElement) return;
   
+  // Clean up previous instances
+  cleanupEventDetails();
+  cleanupChat();
+  if (createEventPageInstance) {
+    createEventPageInstance.destroy();
+  }
+  
   appElement.innerHTML = '';
   
-  renderEventCreationScreen(appElement, {}, {
-    onSuccess: (eventId) => {
-      console.log('Event created:', eventId);
-      telegramAuth.showAlert('Подію створено!');
+  // Create container for the new page
+  const pageContainer = document.createElement('div');
+  pageContainer.style.cssText = 'height: 100%; width: 100%;';
+  appElement.appendChild(pageContainer);
+  
+  // Use the new premium CreateEventPage
+  createEventPageInstance = new CreateEventPage(pageContainer, {
+    onBack: () => {
       state.currentView = 'map';
       renderMap();
     },
-    onCancel: () => {
+    onEventCreated: async (eventId) => {
+      console.log('Sprint 3.5: Event created:', eventId);
+      
+      // Close Create Event page
+      if (createEventPageInstance) {
+        createEventPageInstance.destroy();
+        createEventPageInstance = null;
+      }
+      
+      // Switch to map view
       state.currentView = 'map';
-      renderMap();
+      
+      try {
+        // Sprint 3.5: Refresh events from Supabase
+        if (eventSyncInstance) {
+          const events = await eventSyncInstance.loadEvents();
+          state.events = events;
+          
+          // Find the new event
+          const newEvent = events.find((e: MapEvent) => e.id === eventId);
+          
+          if (newEvent) {
+            // Update map markers
+            mapInstance?.updateMarkers(events, state.userLocation!);
+            
+            // Sprint 3.5: Fly camera to new event (1200ms)
+            if (mapInstance) {
+              mapInstance.flyTo({ latitude: newEvent.latitude, longitude: newEvent.longitude }, 15);
+            }
+            
+            // Sprint 3.5: Open Bottom Sheet with new event
+            setTimeout(() => {
+              handleMarkerTap(newEvent);
+            }, 1300);
+          }
+        }
+        
+        // Sprint 3.5: Success toast
+        showSuccessToast('Подію створено!');
+        
+      } catch (error) {
+        console.error('Sprint 3.5: Error syncing new event:', error);
+        showSuccessToast('Подію створено!');
+        // Still refresh map
+        renderMap();
+      }
+    },
+    onError: (error) => {
+      telegramAuth.showAlert(error);
     },
   });
 }
@@ -723,31 +858,72 @@ function initNavListeners(): void {
 }
 
 function initMapComponents(location: Location): void {
+  // Sprint Alpha: Prevent duplicate map initialization
+  if (isMapInitialized) return;
+  isMapInitialized = true;
+
   mapContainer = document.getElementById('map-container');
   bottomSheetContainer = document.getElementById('bottom-sheet-container');
 
   if (!mapContainer || !bottomSheetContainer) return;
 
-  // Initialize map
+  // Sprint 2.1: Get safe area from Telegram
+  const safeArea = telegramAuth.getSafeArea();
+
+  // Initialize map with Sprint 2.3 LinkUpMap
   const mapToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
-  mapInstance = new LinkUpMap(mapContainer, mapToken);
-
-  mapInstance.setOnEventClick((event) => {
-    handleEventClick(event);
+  mapInstance = new LinkUpMap({
+    container: mapContainer,
+    accessToken: mapToken,
+    defaultCenter: [location.longitude || DEFAULT_LOCATION.longitude, location.latitude || DEFAULT_LOCATION.latitude],
+    defaultZoom: 13,
+    safeArea,
+    onLocationChange: (newLocation) => {
+      state.userLocation = newLocation;
+    },
+    onMapReady: () => {
+      console.log('Sprint 2.3: Map ready');
+    },
+    onMapError: (error) => {
+      console.error('Sprint 2.3: Map error:', error);
+    },
+    onEventClick: (event) => {
+      // Sprint 2.3: Open bottom sheet preview on marker tap
+      handleMarkerTap(event);
+    },
   });
 
-  mapInstance.setOnLocationChange((newLocation) => {
-    state.userLocation = newLocation;
-    loadEvents(newLocation);
-  });
+  // Set user location on map if available
+  if (location) {
+    mapInstance.setUserLocation(location);
+  }
 
-  // Set user location on map
-  mapInstance.setUserLocation(location);
-
-  // Initialize bottom sheet
-  bottomSheetInstance = new BottomSheet(bottomSheetContainer, {
+  // Sprint 2.4: Initialize premium bottom sheet
+  bottomSheetInstance = new PremiumBottomSheet(document.createElement('div'), {
+    // Sprint 4.1: Join request callbacks
+    onJoin: (eventId) => {
+      handleJoinEvent(eventId);
+    },
+    onCancelRequest: (eventId) => {
+      handleCancelRequest(eventId);
+    },
+    onShare: (_eventId) => {
+      telegramAuth.hapticFeedback('light');
+      telegramAuth.showAlert('Поділитися');
+    },
+    onSave: (_eventId) => {
+      telegramAuth.hapticFeedback('light');
+      telegramAuth.showAlert('Збережено!');
+    },
+    onReport: (_eventId) => {
+      telegramAuth.hapticFeedback('medium');
+      telegramAuth.showAlert('Скаргу надіслано');
+    },
+    onClose: () => {
+      state.bottomSheetState = 'collapsed';
+    },
     onStateChange: (newState) => {
-      state.bottomSheetState = newState;
+      state.bottomSheetState = newState === 'closed' ? 'collapsed' : newState === 'peek' ? 'half' : 'full';
     },
   });
 
@@ -756,70 +932,185 @@ function initMapComponents(location: Location): void {
     renderAchievements();
   });
 
-  // Load initial events
+  // Sprint 3.5: Initialize map sync
+  mapSyncInstance = getMapSync({ flyDuration: 1200, flyZoom: 15 });
+  if (mapInstance) {
+    mapSyncInstance.attach({
+      flyTo: (options: { center: [number, number]; zoom?: number }) => {
+        mapInstance!.flyTo({ longitude: options.center[0], latitude: options.center[1] }, options.zoom);
+      },
+      getZoom: () => {
+        // Use private map access or default zoom
+        return 13;
+      },
+      getCenter: () => {
+        const center = mapInstance!.getCenter();
+        return { lat: center.lat, lng: center.lng };
+      },
+    });
+  }
+
+  // Sprint 3.5: Initialize event sync with realtime
+  eventSyncInstance = getEventSync({
+    userLocation: location,
+    radiusKm: 10,
+    enableRealtime: true,
+    mapSync: mapSyncInstance,
+  });
+  eventSyncInstance.setCallbacks({
+    onEventsLoaded: (events: MapEvent[]) => {
+      state.events = events;
+      mapInstance?.updateMarkers(events, location);
+    },
+    onEventAdded: (event: MapEvent) => {
+      // Add marker will be handled by mapInstance.updateMarkers
+      // But we can fly to new event
+      if (mapInstance && eventSyncInstance) {
+        mapInstance.flyTo({ latitude: event.latitude, longitude: event.longitude }, 15);
+      }
+    },
+    onEventUpdated: (_event: MapEvent) => {
+      // Refresh markers
+      eventSyncInstance?.loadEvents();
+    },
+    onEventRemoved: (_eventId: string) => {
+      // Refresh markers
+      eventSyncInstance?.loadEvents();
+    },
+    onError: (error: string) => {
+      console.error('Event sync error:', error);
+    },
+  });
+
+  // Sprint 2.2: Load events nearby
   loadEvents(location);
 }
 
+// Sprint 2.2: Load events using EventsService
 async function loadEvents(location: Location): Promise<void> {
-  const category = state.selectedCategory as EventCategory | null;
-  state.events = await getEventsNearby(location, 10, category);
-
-  // Update map markers
-  if (mapInstance) {
-    mapInstance.updateMarkers(state.events, location);
-  }
-
-  // Update bottom sheet content
-  updateBottomSheet();
-}
-
-function updateBottomSheet(): void {
-  if (!bottomSheetInstance) return;
-
-  const content = bottomSheetInstance.getContent();
-  if (!content) return;
-
-  const filteredEvents = state.selectedCategory
-    ? state.events.filter(e => e.category === state.selectedCategory)
-    : state.events;
-
-  content.innerHTML = `
-    <div class="events-list-header">
-      <h2 class="events-list-title">Події поруч</h2>
-      <span class="events-count">${filteredEvents.length}</span>
-    </div>
-  `;
-
-  if (filteredEvents.length === 0) {
-    content.innerHTML += `
-      <div class="empty-events">
-        <div class="empty-icon">🔍</div>
-        <p>Немає подій поблизу</p>
-        <span>Спробуйте обрати іншу категорію</span>
-      </div>
-    `;
-  } else {
-    const eventsList = createEventCardList(filteredEvents, {
-      onClick: (event) => handleEventClick(event),
-      onJoin: (eventId) => handleJoinEvent(eventId),
-    });
-    content.appendChild(eventsList);
-  }
-
-  bottomSheetInstance.open(state.bottomSheetState);
-}
-
-function handleEventClick(event: MapEvent): void {
-  telegramAuth.hapticFeedback('medium');
+  state.isLoading = true;
   
-  if (mapInstance) {
-    mapInstance.flyTo({ latitude: event.latitude, longitude: event.longitude }, 15);
-    mapInstance.selectMarker(event.id);
-  }
+  const result = await EventsService.getNearbyEvents({
+    location,
+    radiusKm: 50, // km - show events in wider area for demo
+    category: state.selectedCategory as import('./types').EventCategory || null,
+    limit: 50,
+  });
 
-  // Navigate to event details
-  const currentUserId = state.profile?.user_id || null;
-  renderEventDetailsScreen(event.id, currentUserId);
+  state.isLoading = false;
+
+  if (result.success) {
+    state.events = result.events;
+    updateBottomSheet();
+    
+    // Update map markers
+    if (mapInstance) {
+      mapInstance.updateMarkers(state.events, location);
+    }
+  } else {
+    console.error('Failed to load events:', result.error);
+    state.events = [];
+  }
+}
+
+// Sprint 2.2: Bottom sheet shows events
+export function updateBottomSheet(): void {
+  // Sprint 2.4: Premium bottom sheet handles event previews
+  // This function is kept for compatibility but doesn't open the sheet
+  // Events are shown via marker taps using the premium bottom sheet
+}
+
+// Sprint 2.4: Event join handling
+// Sprint 4.1: Handle join event with request system
+async function handleJoinEvent(eventId: string): Promise<void> {
+  try {
+    // Show loading state
+    if (bottomSheetInstance) {
+      bottomSheetInstance.setRequestLoading(true);
+    }
+    
+    // Call join API
+    const result = await JoinRequestService.join(eventId);
+    
+    if (result.success) {
+      telegramAuth.hapticNotification('success');
+      telegramAuth.showAlert('Заявку надіслано! Очікуйте схвалення від організатора.');
+      
+      // Update button state
+      if (bottomSheetInstance) {
+        bottomSheetInstance.setRequestState('pending');
+      }
+      
+      // Subscribe to status changes for realtime updates
+      RequestSubscriptionManager.getSubscription(eventId, {
+        onMyStatusChange: (status) => {
+          if (bottomSheetInstance && status.status) {
+            bottomSheetInstance.setRequestState(status.status);
+          }
+        },
+      }).subscribe();
+    } else {
+      telegramAuth.hapticNotification('error');
+      telegramAuth.showAlert(result.error || 'Помилка приєднання');
+    }
+  } catch (err) {
+    console.error('Join event error:', err);
+    telegramAuth.hapticNotification('error');
+    telegramAuth.showAlert('Помилка приєднання');
+  } finally {
+    if (bottomSheetInstance) {
+      bottomSheetInstance.setRequestLoading(false);
+    }
+  }
+}
+
+// Sprint 4.1: Handle cancel request
+async function handleCancelRequest(eventId: string): Promise<void> {
+  try {
+    if (bottomSheetInstance) {
+      bottomSheetInstance.setRequestLoading(true);
+    }
+    
+    const result = await JoinRequestService.cancel(eventId);
+    
+    if (result.success) {
+      telegramAuth.hapticNotification('success');
+      telegramAuth.showAlert('Заявку скасовано');
+      
+      if (bottomSheetInstance) {
+        bottomSheetInstance.setRequestState('none');
+      }
+    } else {
+      telegramAuth.hapticNotification('error');
+      telegramAuth.showAlert(result.error || 'Помилка скасування');
+    }
+  } catch (err) {
+    console.error('Cancel request error:', err);
+    telegramAuth.hapticNotification('error');
+    telegramAuth.showAlert('Помилка скасування');
+  } finally {
+    if (bottomSheetInstance) {
+      bottomSheetInstance.setRequestLoading(false);
+    }
+  }
+}
+
+// Sprint 2.4: Handle marker tap - show premium bottom sheet
+async function handleMarkerTap(event: MapEvent): Promise<void> {
+  if (!bottomSheetInstance) return;
+  
+  // Sprint 4.1: Fetch current request state
+  const currentUserId = state.profile?.id;
+  const isOrganizer = currentUserId === event.organizer.id;
+  
+  let requestState: 'none' | 'pending' | 'accepted' | 'declined' | 'cancelled' | 'joined' = 'none';
+  
+  if (!isOrganizer && currentUserId) {
+    const status = await JoinRequestService.getMyRequestStatus(event.id);
+    requestState = status.state;
+  }
+  
+  bottomSheetInstance.show(event, requestState, isOrganizer);
 }
 
 function renderEventDetailsScreen(eventId: string, currentUserId: string | null): void {
@@ -855,10 +1146,11 @@ function renderChatScreen(chat: ChatListItem, currentUserId: string | null): voi
   });
 }
 
-function handleJoinEvent(_eventId: string): void {
-  telegramAuth.hapticNotification('success');
-  telegramAuth.showAlert('Ви приєдналися до події!');
-}
+// Sprint 2.1: Event join handling will be implemented in future sprints
+// function handleJoinEvent(_eventId: string): void {
+//   telegramAuth.hapticNotification('success');
+//   telegramAuth.showAlert('Ви приєдналися до події!');
+// }
 
 function initCategoryFilters(): void {
   const chipsContainer = document.getElementById('category-chips');
@@ -875,6 +1167,7 @@ function initCategoryFilters(): void {
       const category = (chip as HTMLElement).dataset.category || null;
       state.selectedCategory = category;
 
+      // Sprint 2.2: Reload events with new filter
       if (state.userLocation) {
         loadEvents(state.userLocation);
       }
