@@ -1,15 +1,17 @@
-// Sprint 2.1: Map Foundation - LinkUp
-// Production-quality Mapbox map with dark theme
+// Sprint 2.3: Interactive Event Markers - LinkUp Map
+// Premium interactive markers with clustering on Mapbox
 
 import type { Location, MapEvent } from './types';
 
-// Mapbox GL JS type declarations
+// Mapbox GL JS type declarations with full API support
 declare global {
   interface Window {
     mapboxgl?: {
       Map: new (config: MapConfig) => MapboxMap;
       NavigationControl: new (options?: NavigationControlOptions) => unknown;
       GeolocateControl: new (config: GeolocateConfig) => unknown;
+      Marker: new (options?: MarkerOptions) => MapboxMarker;
+      Popup: new (options?: PopupOptions) => MapboxPopup;
       accessToken: string;
     };
   }
@@ -36,15 +38,63 @@ interface GeolocateConfig {
   showUserHeading?: boolean;
 }
 
+interface MarkerOptions {
+  element?: HTMLElement;
+  anchor?: string;
+  offset?: [number, number];
+}
+
+interface PopupOptions {
+  closeButton?: boolean;
+  closeOnClick?: boolean;
+  offset?: number;
+  className?: string;
+}
+
 interface MapboxMap {
-  on: (event: string, callback: (e?: unknown) => void) => void;
-  off: (event: string, callback: () => void) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on: (type: any, ...args: any[]) => void;
+  off: (type: string, callback: () => void) => void;
   flyTo: (options: FlyToOptions) => void;
+  easeTo: (options: FlyToOptions) => void;
   getCenter: () => { lat: number; lng: number };
   getZoom: () => number;
+  getContainer: () => HTMLElement;
   remove: () => void;
   addControl: (control: unknown, position?: string) => void;
   resize: () => void;
+  loadImage: (name: string, image: HTMLImageElement | ImageBitmap, pixelRatio?: number) => void;
+  addSource: (id: string, source: GeoJSONSource) => void;
+  getSource: (id: string) => GeoJSONSource | undefined;
+  addLayer: (layer: MapLayer) => void;
+  getLayer: (id: string) => MapLayer | undefined;
+  removeLayer: (id: string) => void;
+  setLayoutProperty: (layer: string, property: string, value: unknown) => void;
+  setPaintProperty: (layer: string, property: string, value: unknown) => void;
+  project: (coord: [number, number]) => { x: number; y: number };
+  queryRenderedFeatures: (point?: { x: number; y: number }, options?: { layers?: string[] }) => MapFeature[];
+}
+
+interface GeoJSONSource {
+  type: string;
+  data: GeoJSON.FeatureCollection;
+  cluster?: boolean;
+  clusterMaxZoom?: number;
+  clusterRadius?: number;
+}
+
+interface MapFeature {
+  properties: Record<string, unknown>;
+  geometry: GeoJSON.Geometry;
+}
+
+interface MapLayer {
+  id: string;
+  type: string;
+  source?: string;
+  paint?: Record<string, unknown>;
+  layout?: Record<string, unknown>;
+  filter?: unknown[];
 }
 
 interface FlyToOptions {
@@ -52,6 +102,20 @@ interface FlyToOptions {
   zoom?: number;
   duration?: number;
   essential?: boolean;
+}
+
+interface MapboxMarker {
+  setLngLat: (lnglat: [number, number]) => MapboxMarker;
+  setPopup: (popup: MapboxPopup) => MapboxMarker;
+  addTo: (map: MapboxMap) => MapboxMarker;
+  remove: () => void;
+  getElement: () => HTMLElement;
+  togglePopup: () => void;
+}
+
+interface MapboxPopup {
+  setHTML: (html: string) => MapboxPopup;
+  setDOMContent: (element: HTMLElement) => MapboxPopup;
 }
 
 export interface MapOptions {
@@ -63,10 +127,29 @@ export interface MapOptions {
   onLocationChange?: (location: Location) => void;
   onMapReady?: () => void;
   onMapError?: (error: Error) => void;
+  onEventClick?: (event: MapEvent) => void;
 }
 
-// Map style constant
+// Sprint 2.3: Category colors as specified
+const CATEGORY_COLORS: Record<string, string> = {
+  party: '#a855f7',      // Purple
+  sport: '#22c55e',      // Green
+  food: '#f97316',       // Orange
+  coffee: '#92400e',     // Brown (mapped from party/food)
+  music: '#ec4899',      // Pink
+  travel: '#3b82f6',     // Blue
+  games: '#06b6d4',      // Cyan
+  education: '#eab308',  // Yellow
+  nature: '#10b981',     // Emerald
+  art: '#ef4444',        // Red
+  technology: '#6366f1', // Indigo
+  networking: '#8b5cf6', // Purple (tech/business)
+  other: '#6b7280',      // Gray
+};
+
 const MAP_STYLE = 'mapbox://styles/mapbox/dark-v11';
+const CLUSTER_MAX_ZOOM = 14;
+const CLUSTER_RADIUS = 50;
 
 export class LinkUpMap {
   private container: HTMLElement;
@@ -77,15 +160,17 @@ export class LinkUpMap {
   private onLocationChange?: (location: Location) => void;
   private onMapReady?: () => void;
   private onMapError?: (error: Error) => void;
+  private onEventClick?: (event: MapEvent) => void;
 
   private map: MapboxMap | null = null;
-  private userMarker: HTMLElement | null = null;
-  private myLocationBtn: HTMLElement | null = null;
-  private loadingOverlay: HTMLElement | null = null;
-  private errorOverlay: HTMLElement | null = null;
+  private mapboxgl: Window['mapboxgl'] | null = null;
+  private events: MapEvent[] = [];
   
   private isReady = false;
   private currentLocation: Location | null = null;
+  private loadingOverlay: HTMLElement | null = null;
+  private errorOverlay: HTMLElement | null = null;
+  private emptyStateOverlay: HTMLElement | null = null;
 
   constructor(options: MapOptions) {
     this.container = options.container;
@@ -96,6 +181,7 @@ export class LinkUpMap {
     this.onLocationChange = options.onLocationChange;
     this.onMapReady = options.onMapReady;
     this.onMapError = options.onMapError;
+    this.onEventClick = options.onEventClick;
 
     this.init();
   }
@@ -104,17 +190,15 @@ export class LinkUpMap {
     this.showLoading();
 
     try {
-      // Load Mapbox GL JS
-      const mapboxgl = await this.loadMapbox();
+      this.mapboxgl = await this.loadMapbox();
       
-      if (!mapboxgl || !this.accessToken) {
+      if (!this.mapboxgl || !this.accessToken) {
         throw new Error('Mapbox not available or token missing');
       }
 
-      mapboxgl.accessToken = this.accessToken;
+      this.mapboxgl.accessToken = this.accessToken;
 
-      // Create map instance
-      this.map = new mapboxgl.Map({
+      this.map = new this.mapboxgl.Map({
         container: this.container,
         style: MAP_STYLE,
         center: this.defaultCenter,
@@ -124,34 +208,29 @@ export class LinkUpMap {
         antialias: true,
       });
 
-      // Add navigation control (zoom buttons)
       this.map.addControl(
-        new mapboxgl.NavigationControl(),
+        new this.mapboxgl.NavigationControl({ showCompass: false }),
         'bottom-right'
       );
 
-      // Add geolocate control for "My Location"
-      const geolocateControl = new mapboxgl.GeolocateControl({
+      const geolocateControl = new this.mapboxgl.GeolocateControl({
         positionOptions: { enableHighAccuracy: true },
         trackUserLocation: true,
         showUserHeading: false,
       });
       this.map.addControl(geolocateControl, 'bottom-right');
 
-      // Map load event
       this.map.on('load', () => {
         this.isReady = true;
         this.hideLoading();
-        this.addUserMarker(this.defaultCenter);
-        this.createMyLocationFAB();
         this.applySafeAreaStyles();
+        this.setupEventsSource();
         
         if (this.onMapReady) {
           this.onMapReady();
         }
       });
 
-      // Map move event (throttled)
       let moveTimeout: ReturnType<typeof setTimeout> | null = null;
       this.map.on('moveend', () => {
         if (moveTimeout) clearTimeout(moveTimeout);
@@ -166,7 +245,6 @@ export class LinkUpMap {
         }, 300);
       });
 
-      // Error handling
       this.map.on('error', (e: unknown) => {
         console.error('Mapbox error:', e);
         this.showError('Помилка завантаження карти');
@@ -189,13 +267,11 @@ export class LinkUpMap {
     if (window.mapboxgl) return window.mapboxgl;
 
     return new Promise((resolve) => {
-      // Load CSS first
       const link = document.createElement('link');
       link.rel = 'stylesheet';
       link.href = 'https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css';
       document.head.appendChild(link);
 
-      // Load JS
       const script = document.createElement('script');
       script.src = 'https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js';
       script.async = true;
@@ -205,6 +281,207 @@ export class LinkUpMap {
       
       document.head.appendChild(script);
     });
+  }
+
+  private setupEventsSource(): void {
+    if (!this.map || !this.mapboxgl) return;
+
+    const geojson: GeoJSON.FeatureCollection = {
+      type: 'FeatureCollection',
+      features: this.events.map(event => ({
+        type: 'Feature' as const,
+        properties: {
+          id: event.id,
+          title: event.title,
+          category: event.category,
+          participants: event.current_participants,
+          maxParticipants: event.max_participants,
+          distance: event.distance,
+          isPremium: event.is_premium_only,
+          color: this.getCategoryColor(event.category),
+        },
+        geometry: {
+          type: 'Point' as const,
+          coordinates: [event.longitude, event.latitude],
+        },
+      })),
+    };
+
+    this.map.addSource('events', {
+      type: 'geojson',
+      data: geojson,
+      cluster: true,
+      clusterMaxZoom: CLUSTER_MAX_ZOOM,
+      clusterRadius: CLUSTER_RADIUS,
+    });
+
+    // Cluster circles
+    this.map.addLayer({
+      id: 'clusters',
+      type: 'circle',
+      source: 'events',
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-color': [
+          'step',
+          ['get', 'point_count'],
+          '#6366f1',  // < 10
+          10, '#8b5cf6',  // 10-50
+          50, '#a855f7',  // 50-100
+          100, '#d946ef', // 100+
+        ],
+        'circle-radius': [
+          'step',
+          ['get', 'point_count'],
+          20,
+          10, 25,
+          50, 30,
+          100, 40,
+        ],
+        'circle-stroke-width': 3,
+        'circle-stroke-color': '#ffffff',
+        'circle-opacity': 0.9,
+      },
+    });
+
+    // Cluster count labels
+    this.map.addLayer({
+      id: 'cluster-count',
+      type: 'symbol',
+      source: 'events',
+      filter: ['has', 'point_count'],
+      layout: {
+        'text-field': ['get', 'point_count_abbreviated'],
+        'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
+        'text-size': 14,
+      },
+      paint: {
+        'text-color': '#ffffff',
+      },
+    });
+
+    // Individual event markers
+    this.map.addLayer({
+      id: 'unclustered-point',
+      type: 'circle',
+      source: 'events',
+      filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-color': ['get', 'color'],
+        'circle-radius': [
+          'case',
+          ['get', 'isPremium'],
+          12,
+          10,
+        ],
+        'circle-stroke-width': [
+          'case',
+          ['get', 'isPremium'],
+          3,
+          2,
+        ],
+        'circle-stroke-color': [
+          'case',
+          ['get', 'isPremium'],
+          '#fbbf24', // Gold for premium
+          '#ffffff',
+        ],
+        'circle-opacity': 0.95,
+      },
+    });
+
+    // Participant count on markers
+    this.map.addLayer({
+      id: 'marker-labels',
+      type: 'symbol',
+      source: 'events',
+      filter: ['!', ['has', 'point_count']],
+      layout: {
+        'text-field': ['get', 'participants'],
+        'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
+        'text-size': 9,
+        'text-allow-overlap': true,
+      },
+      paint: {
+        'text-color': '#ffffff',
+      },
+    });
+
+    // Click on cluster to zoom
+    this.map.on('click', 'clusters', (e: { point: { x: number; y: number } }) => {
+      if (!this.map) return;
+      
+      const features = this.map.queryRenderedFeatures(e.point, { layers: ['clusters'] });
+      if (!features.length) return;
+      
+      this.map.easeTo({
+        center: (features[0].geometry as GeoJSON.Point).coordinates as [number, number],
+        zoom: (this.map.getZoom() + 2),
+        duration: 500,
+      });
+    });
+
+    // Click on individual marker
+    this.map.on('click', 'unclustered-point', (e: { features?: MapFeature[] }) => {
+      if (!e.features?.length || !this.map) return;
+      
+      const feature = e.features[0];
+      const eventId = String(feature.properties?.id);
+      const event = this.events.find(ev => ev.id === eventId);
+      
+      if (!event) return;
+
+      // Animate marker
+      this.animateMarkerSelection(eventId);
+
+      // Center map
+      this.map.flyTo({
+        center: (feature.geometry as GeoJSON.Point).coordinates as [number, number],
+        zoom: Math.max(this.map.getZoom(), 15),
+        duration: 800,
+        essential: true,
+      });
+
+      // Fire callback
+      if (this.onEventClick) {
+        this.onEventClick(event);
+      }
+    });
+
+    // Change cursor on hover
+    this.map.on('mouseenter', 'clusters', () => {
+      if (this.map) this.map.getContainer().style.cursor = 'pointer';
+    });
+    this.map.on('mouseleave', 'clusters', () => {
+      if (this.map) this.map.getContainer().style.cursor = '';
+    });
+    this.map.on('mouseenter', 'unclustered-point', () => {
+      if (this.map) this.map.getContainer().style.cursor = 'pointer';
+    });
+    this.map.on('mouseleave', 'unclustered-point', () => {
+      if (this.map) this.map.getContainer().style.cursor = '';
+    });
+  }
+
+  private animateMarkerSelection(eventId: string): void {
+    if (!this.map) return;
+
+    // Update paint properties for selection effect
+    this.map.setPaintProperty('unclustered-point', 'circle-radius', [
+      'case',
+      ['==', ['get', 'id'], eventId],
+      16,
+      [
+        'case',
+        ['get', 'isPremium'],
+        12,
+        10,
+      ],
+    ]);
+  }
+
+  private getCategoryColor(category: string): string {
+    return CATEGORY_COLORS[category.toLowerCase()] || CATEGORY_COLORS.other;
   }
 
   private showLoading(): void {
@@ -256,84 +533,81 @@ export class LinkUpMap {
     }
   }
 
+  private showEmptyState(): void {
+    if (this.emptyStateOverlay) return;
+
+    this.emptyStateOverlay = document.createElement('div');
+    this.emptyStateOverlay.className = 'map-empty-overlay';
+    this.emptyStateOverlay.innerHTML = `
+      <div class="map-empty-content">
+        <div class="map-empty-icon">📍</div>
+        <h3>No events nearby</h3>
+        <p>There are no events in this area yet.</p>
+        <button class="map-empty-cta" id="change-radius-btn">
+          Change radius
+        </button>
+      </div>
+    `;
+    this.container.appendChild(this.emptyStateOverlay);
+
+    document.getElementById('change-radius-btn')?.addEventListener('click', () => {
+      this.hideEmptyState();
+    });
+  }
+
+  private hideEmptyState(): void {
+    if (this.emptyStateOverlay) {
+      this.emptyStateOverlay.remove();
+      this.emptyStateOverlay = null;
+    }
+  }
+
   private retry(): void {
     this.hideError();
     this.init();
   }
 
-  private addUserMarker(center: [number, number]): void {
-    if (!this.isReady) return;
+  public updateMarkers(events: MapEvent[], _userLocation: Location): void {
+    if (!this.map || !this.isReady) return;
 
-    // Remove existing marker
-    if (this.userMarker) {
-      this.userMarker.remove();
+    this.events = events;
+    this.hideEmptyState();
+
+    // Update GeoJSON source
+    const source = this.map.getSource('events') as GeoJSONSource | undefined;
+    if (source) {
+      const geojson: GeoJSON.FeatureCollection = {
+        type: 'FeatureCollection',
+        features: events.map(event => ({
+          type: 'Feature' as const,
+          properties: {
+            id: event.id,
+            title: event.title,
+            category: event.category,
+            participants: event.current_participants,
+            maxParticipants: event.max_participants,
+            distance: event.distance,
+            isPremium: event.is_premium_only,
+            color: this.getCategoryColor(event.category),
+          },
+          geometry: {
+            type: 'Point' as const,
+            coordinates: [event.longitude, event.latitude],
+          },
+        })),
+      };
+      
+      source.data = geojson;
     }
 
-    // Create user marker element
-    this.userMarker = document.createElement('div');
-    this.userMarker.className = 'user-location-marker-sprint21';
-    this.userMarker.innerHTML = `
-      <div class="user-marker-dot"></div>
-      <div class="user-marker-pulse"></div>
-    `;
-
-    // Add to container (position will be set by CSS transform)
-    this.container.appendChild(this.userMarker);
-    this.updateMarkerPosition(center);
+    // Show empty state if no events
+    if (events.length === 0) {
+      setTimeout(() => this.showEmptyState(), 500);
+    }
   }
 
-  private updateMarkerPosition(center: [number, number]): void {
-    if (!this.map || !this.userMarker) return;
-
-    // Convert lng/lat to pixel position
-    // This is a simplified version - in production you'd use map.project()
-    const lng = center[0];
-    const lat = center[1];
-    
-    // Approximate pixel position (for demo - in real implementation
-    // you'd calculate from map.getContainer() size and map.project())
-    // For Sprint 2.1, we'll use CSS transforms
-    this.userMarker.style.left = '50%';
-    this.userMarker.style.top = '50%';
-    this.userMarker.style.transform = 'translate(-50%, -50%)';
-    
-    this.currentLocation = { latitude: lat, longitude: lng };
-  }
-
-  private createMyLocationFAB(): void {
-    if (this.myLocationBtn) return;
-
-    this.myLocationBtn = document.createElement('button');
-    this.myLocationBtn.className = 'my-location-fab';
-    this.myLocationBtn.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24">
-        <path d="M12 8c-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4-1.79-4-4-4zm8.94 3A8.994 8.994 0 0013 3.06V1h-2v2.06A8.994 8.994 0 003.06 11H1v2h2.06A8.994 8.994 0 0011 20.94V23h2v-2.06A8.994 8.994 0 0020.94 13H23v-2h-2.06zM12 19c-3.87 0-7-3.13-7-7s3.13-7 7-7 7 3.13 7 7-3.13 7-7 7z"/>
-      </svg>
-    `;
-
-    this.myLocationBtn.addEventListener('click', () => {
-      this.centerOnUserLocation();
-    });
-
-    this.container.appendChild(this.myLocationBtn);
-  }
-
-  public centerOnUserLocation(): void {
-    if (!this.map) return;
-
-    const location = this.currentLocation || {
-      latitude: this.defaultCenter[1],
-      longitude: this.defaultCenter[0],
-    };
-
-    this.map.flyTo({
-      center: [location.longitude, location.latitude],
-      zoom: 15,
-      duration: 1000,
-      essential: true,
-    });
-
-    this.updateMarkerPosition([location.longitude, location.latitude]);
+  public selectMarker(eventId: string): void {
+    this.animateMarkerSelection(eventId);
   }
 
   public flyTo(location: Location, zoom?: number): void {
@@ -345,90 +619,17 @@ export class LinkUpMap {
       duration: 1000,
       essential: true,
     });
-
-    this.updateMarkerPosition([location.longitude, location.latitude]);
   }
 
   public setUserLocation(location: Location): void {
     this.currentLocation = location;
-    this.updateMarkerPosition([location.longitude, location.latitude]);
     this.flyTo(location, 15);
   }
 
-  // Sprint 2.2: Event markers management
-  private eventMarkers: Map<string, HTMLElement> = new Map();
-
-  public updateMarkers(events: MapEvent[], _userLocation: Location): void {
-    if (!this.isReady) return;
-
-    // Remove existing event markers
-    this.eventMarkers.forEach(marker => marker.remove());
-    this.eventMarkers.clear();
-
-    // Add new event markers
-    events.forEach(event => {
-      this.addEventMarker(event);
-    });
+  public centerOnUserLocation(): void {
+    if (!this.currentLocation) return;
+    this.flyTo(this.currentLocation, 15);
   }
-
-  private addEventMarker(event: MapEvent): void {
-    if (!this.map || !this.isReady) return;
-
-    // Create marker element
-    const marker = document.createElement('div');
-    marker.className = 'event-marker-sprint22';
-    marker.dataset.eventId = event.id;
-
-    // Category color dot
-    const dot = document.createElement('div');
-    dot.className = 'event-marker-dot';
-    dot.style.backgroundColor = this.getCategoryColor(event.category);
-    marker.appendChild(dot);
-
-    // Add click handler
-    marker.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.handleMarkerClick(event);
-    });
-
-    // Store reference
-    this.eventMarkers.set(event.id, marker);
-
-    // Note: In production, we'd use mapboxgl.Marker
-    // For Sprint 2.2, we'll use a simplified overlay approach
-    this.container.appendChild(marker);
-  }
-
-  private handleMarkerClick(event: MapEvent): void {
-    if (this.onEventClick) {
-      this.onEventClick(event);
-    }
-  }
-
-  public selectMarker(eventId: string): void {
-    // Remove previous selection
-    this.eventMarkers.forEach((marker, id) => {
-      marker.classList.toggle('selected', id === eventId);
-    });
-  }
-
-  private getCategoryColor(category: string): string {
-    const colors: Record<string, string> = {
-      party: '#ef4444',
-      sport: '#22c55e',
-      food: '#f97316',
-      music: '#8b5cf6',
-      art: '#ec4899',
-      nature: '#10b981',
-      games: '#3b82f6',
-      networking: '#6366f1',
-      education: '#f59e0b',
-      other: '#6b7280',
-    };
-    return colors[category] || colors.other;
-  }
-
-  private onEventClick?: (event: MapEvent) => void;
 
   public setOnEventClick(callback: (event: MapEvent) => void): void {
     this.onEventClick = callback;
@@ -441,20 +642,15 @@ export class LinkUpMap {
   }
 
   public destroy(): void {
+    this.hideLoading();
+    this.hideError();
+    this.hideEmptyState();
+    
     if (this.map) {
       this.map.remove();
       this.map = null;
     }
-    if (this.userMarker) {
-      this.userMarker.remove();
-      this.userMarker = null;
-    }
-    if (this.myLocationBtn) {
-      this.myLocationBtn.remove();
-      this.myLocationBtn = null;
-    }
-    this.hideLoading();
-    this.hideError();
+    
     this.isReady = false;
   }
 
@@ -464,17 +660,19 @@ export class LinkUpMap {
 
   private applySafeAreaStyles(): void {
     if (!this.safeArea) return;
-
-    // Apply safe area padding via CSS custom properties
     this.container.style.setProperty('--safe-area-top', `${this.safeArea.top}px`);
     this.container.style.setProperty('--safe-area-bottom', `${this.safeArea.bottom}px`);
   }
+
+  public getCurrentEvents(): MapEvent[] {
+    return this.events;
+  }
 }
 
-// Inject Sprint 2.1 map styles
+// Inject Sprint 2.3 map styles with animations
 const mapStyles = document.createElement('style');
 mapStyles.textContent = `
-  /* Sprint 2.1 Map Styles */
+  /* Sprint 2.3: Map Styles */
   
   /* Loading Overlay */
   .map-loading-overlay {
@@ -549,6 +747,59 @@ mapStyles.textContent = `
     background: #2563eb;
   }
 
+  /* Sprint 2.3: Empty State */
+  .map-empty-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(10, 10, 15, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 90;
+    backdrop-filter: blur(4px);
+  }
+
+  .map-empty-content {
+    text-align: center;
+    padding: 32px;
+    color: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  .map-empty-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+  }
+
+  .map-empty-content h3 {
+    margin: 0 0 8px;
+    font-size: 20px;
+    font-weight: 600;
+  }
+
+  .map-empty-content p {
+    margin: 0 0 24px;
+    font-size: 14px;
+    color: #a1a1aa;
+  }
+
+  .map-empty-cta {
+    background: #3b82f6;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .map-empty-cta:hover {
+    background: #2563eb;
+    transform: scale(1.02);
+  }
+
   /* My Location FAB */
   .my-location-fab {
     position: absolute;
@@ -576,6 +827,96 @@ mapStyles.textContent = `
 
   .my-location-fab:active {
     transform: scale(0.95);
+  }
+
+  /* Mapbox overrides for dark theme */
+  .mapboxgl-ctrl-group {
+    background: #1a1a24 !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 12px !important;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  .mapboxgl-ctrl-group button {
+    background: transparent !important;
+    border: none !important;
+    color: #ffffff !important;
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .mapboxgl-ctrl-group button:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon {
+    filter: invert(1);
+  }
+
+  .mapboxgl-ctrl-attrib {
+    display: none !important;
+  }
+
+  .mapboxgl-ctrl-logo {
+    opacity: 0.5;
+  }
+
+  /* Sprint 2.3: Marker Animations */
+  @keyframes markerPulse {
+    0%, 100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(1.1);
+      opacity: 0.8;
+    }
+  }
+
+  @keyframes markerBounce {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-4px);
+    }
+  }
+
+  @keyframes markerAppear {
+    0% {
+      opacity: 0;
+      transform: scale(0.5);
+    }
+    70% {
+      transform: scale(1.1);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes clusterExpand {
+    0% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.2);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  /* Premium badge pulse */
+  @keyframes premiumPulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.4);
+    }
+    50% {
+      box-shadow: 0 0 0 6px rgba(251, 191, 36, 0);
+    }
   }
 
   /* User Location Marker */
@@ -615,39 +956,6 @@ mapStyles.textContent = `
       transform: translate(-50%, -50%) scale(2);
       opacity: 0;
     }
-  }
-
-  /* Mapbox overrides for dark theme */
-  .mapboxgl-ctrl-group {
-    background: #1a1a24 !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
-    border-radius: 12px !important;
-    overflow: hidden;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4) !important;
-  }
-
-  .mapboxgl-ctrl-group button {
-    background: transparent !important;
-    border: none !important;
-    color: #ffffff !important;
-    width: 40px !important;
-    height: 40px !important;
-  }
-
-  .mapboxgl-ctrl-group button:hover {
-    background: rgba(255, 255, 255, 0.1) !important;
-  }
-
-  .mapboxgl-ctrl-group button .mapboxgl-ctrl-icon {
-    filter: invert(1);
-  }
-
-  .mapboxgl-ctrl-attrib {
-    display: none !important;
-  }
-
-  .mapboxgl-ctrl-logo {
-    opacity: 0.5;
   }
 `;
 document.head.appendChild(mapStyles);

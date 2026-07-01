@@ -795,7 +795,7 @@ function initMapComponents(location: Location): void {
   // Sprint 2.1: Get safe area from Telegram
   const safeArea = telegramAuth.getSafeArea();
 
-  // Initialize map with Sprint 2.1 LinkUpMap
+  // Initialize map with Sprint 2.3 LinkUpMap
   const mapToken = import.meta.env.VITE_MAPBOX_TOKEN || '';
   mapInstance = new LinkUpMap({
     container: mapContainer,
@@ -805,13 +805,16 @@ function initMapComponents(location: Location): void {
     safeArea,
     onLocationChange: (newLocation) => {
       state.userLocation = newLocation;
-      // Sprint 2.1: Don't load events yet (future sprint)
     },
     onMapReady: () => {
-      console.log('Sprint 2.1: Map ready');
+      console.log('Sprint 2.3: Map ready');
     },
     onMapError: (error) => {
-      console.error('Sprint 2.1: Map error:', error);
+      console.error('Sprint 2.3: Map error:', error);
+    },
+    onEventClick: (event) => {
+      // Sprint 2.3: Open bottom sheet preview on marker tap
+      handleMarkerTap(event);
     },
   });
 
@@ -920,6 +923,105 @@ function handleEventClick(event: MapEvent): void {
 function handleJoinEvent(_eventId: string): void {
   telegramAuth.hapticNotification('success');
   telegramAuth.showAlert('Ви приєдналися до події!');
+}
+
+// Sprint 2.3: Handle marker tap - show event preview
+function handleMarkerTap(event: MapEvent): void {
+  if (!bottomSheetInstance) return;
+
+  const content = bottomSheetInstance.getContent();
+  if (!content) return;
+
+  // Show event preview in bottom sheet
+  content.innerHTML = createEventPreviewHTML(event);
+  
+  // Add join button handler
+  const joinBtn = content.querySelector('#event-preview-join');
+  if (joinBtn) {
+    joinBtn.addEventListener('click', () => {
+      handleJoinEvent(event.id);
+    });
+  }
+
+  // Add close handler
+  const closeBtn = content.querySelector('#event-preview-close');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      bottomSheetInstance?.open('collapsed');
+    });
+  }
+
+  // Open to half/full position
+  bottomSheetInstance.open('half');
+}
+
+// Sprint 2.3: Create event preview HTML
+function createEventPreviewHTML(event: MapEvent): string {
+  const categoryColors: Record<string, string> = {
+    party: '#a855f7',
+    sport: '#22c55e',
+    food: '#f97316',
+    music: '#ec4899',
+    nature: '#10b981',
+    games: '#06b6d4',
+    education: '#eab308',
+    art: '#ef4444',
+    technology: '#6366f1',
+    networking: '#8b5cf6',
+    other: '#6b7280',
+  };
+  const categoryColor = categoryColors[event.category] || categoryColors.other;
+  
+  const eventDate = new Date(event.event_date);
+  const formattedDate = eventDate.toLocaleDateString('uk-UA', { 
+    day: 'numeric', 
+    month: 'short' 
+  });
+  const formattedTime = eventDate.toLocaleTimeString('uk-UA', { 
+    hour: '2-digit', 
+    minute: '2-digit' 
+  });
+  
+  const distanceKm = event.distance < 1 
+    ? `${Math.round(event.distance * 1000)}м` 
+    : `${event.distance.toFixed(1)}км`;
+  
+  const imageUrl = event.photo_url || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=400';
+
+  return `
+    <div class="event-preview">
+      <div class="event-preview-header">
+        <button id="event-preview-close" class="event-preview-close">×</button>
+      </div>
+      <div class="event-preview-image" style="background-image: url('${imageUrl}')">
+        <div class="event-preview-category" style="background-color: ${categoryColor}">
+          ${event.category}
+        </div>
+        ${event.is_premium_only ? '<div class="event-preview-premium">★ Premium</div>' : ''}
+      </div>
+      <div class="event-preview-content">
+        <h2 class="event-preview-title">${event.title}</h2>
+        <div class="event-preview-meta">
+          <span class="event-preview-distance">📍 ${distanceKm}</span>
+          <span class="event-preview-datetime">🗓 ${formattedDate}, ${formattedTime}</span>
+        </div>
+        <div class="event-preview-participants">
+          <span>👥 ${event.current_participants}/${event.max_participants}</span>
+          ${event.price > 0 ? `<span>💰 ${event.price} ${event.currency}</span>` : '<span class="free">Безкоштовно</span>'}
+        </div>
+        <div class="event-preview-organizer">
+          ${event.organizer.avatar_url 
+            ? `<img src="${event.organizer.avatar_url}" alt="${event.organizer.first_name || 'Organizer'}" class="organizer-avatar">`
+            : '<div class="organizer-avatar-placeholder">👤</div>'
+          }
+          <span>${event.organizer.first_name || event.organizer.username || 'Організатор'}</span>
+        </div>
+        <button id="event-preview-join" class="event-preview-join" disabled>
+          Приєднатися (Скоро)
+        </button>
+      </div>
+    </div>
+  `;
 }
 
 function renderEventDetailsScreen(eventId: string, currentUserId: string | null): void {
