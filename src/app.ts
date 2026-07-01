@@ -1,4 +1,4 @@
-// LinkUp Alpha - Sprint 4 Main Application
+// LinkUp Alpha - Sprint 6 Main Application
 import type { AppState, Location, MapEvent, EventCategory } from './types';
 import { telegramAuth } from './telegram-auth';
 import './styles.css';
@@ -19,6 +19,7 @@ import { BottomSheet, createEventCardList } from './components';
 import { renderEventCreationScreen } from './event-creation';
 import { renderEventDetails, cleanupEventDetails } from './event-details';
 import { cleanup as cleanupChat } from './chat';
+import { renderPremiumScreen, cleanup as cleanupPremium } from './premium';
 import type { ChatListItem } from './types';
 
 // App state
@@ -465,13 +466,13 @@ async function renderMap(): Promise<void> {
           </div>
           <span>Створити</span>
         </button>
-        <button class="nav-item">
+        <button class="nav-item premium-icon" id="premium-nav-btn">
           <div class="nav-icon">
             <svg viewBox="0 0 24 24" fill="currentColor">
-              <path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/>
+              <path d="M5 16L3 5l5.5 5L12 4l3.5 6L21 5l-2 11H5zm14 3c0 .6-.4 1-1 1H6c-.6 0-1-.4-1-1v-1h14v1z"/>
             </svg>
           </div>
-          <span>Чати</span>
+          <span>Premium</span>
         </button>
         <button class="nav-item">
           <div class="nav-icon">
@@ -512,6 +513,25 @@ function renderCreateEvent(): void {
   });
 }
 
+function renderPremium(): void {
+  state.currentView = 'premium';
+  if (!appElement) return;
+  
+  cleanupEventDetails();
+  cleanupChat();
+  cleanupPremium();
+  
+  renderPremiumScreen(appElement, {
+    onBack: () => {
+      state.currentView = 'map';
+      renderMap();
+    },
+    onPurchased: () => {
+      telegramAuth.hapticNotification('success');
+    },
+  });
+}
+
 function initNavListeners(): void {
   if (!appElement) return;
   
@@ -531,6 +551,9 @@ function initNavListeners(): void {
     } else if (index === 2) {
       // Create
       renderCreateEvent();
+    } else if (index === 3) {
+      // Premium
+      renderPremium();
     }
   });
 }

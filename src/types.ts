@@ -60,7 +60,7 @@ export interface OnboardingStep {
   icon: string;
 }
 
-export type ViewType = 'splash' | 'onboarding' | 'home' | 'map' | 'create';
+export type ViewType = 'splash' | 'onboarding' | 'home' | 'map' | 'create' | 'premium';
 
 export interface AppState {
   currentView: ViewType;
@@ -279,4 +279,45 @@ export interface MembersResult {
   success: boolean;
   error?: string;
   members: ChatMember[];
+}
+
+// Premium Types
+export interface PremiumStatus {
+  is_premium: boolean;
+  started_at: string | null;
+  expires_at: string | null;
+}
+
+export interface PremiumPlan {
+  id: 'day' | 'week' | 'month' | 'year';
+  name: string;
+  duration: string;
+  stars: number;
+  features: string[];
+  popular?: boolean;
+}
+
+export interface PurchaseResult {
+  success: boolean;
+  error?: string;
+  purchase_id?: string;
+  plan_id?: string;
+  plan_name?: string;
+  stars_amount?: number;
+  already_exists?: boolean;
+}
+
+export interface PurchaseHistory {
+  id: string;
+  plan_name: string;
+  stars_amount: number;
+  status: 'pending' | 'completed' | 'failed' | 'refunded';
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface PurchaseHistoryResult {
+  success: boolean;
+  error?: string;
+  purchases: PurchaseHistory[];
 }
