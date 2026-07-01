@@ -14,7 +14,7 @@ import {
   formatRequestTime,
   getStatusText,
 } from './requests';
-import { createOrGetChat, getMyChats } from './chat-api';
+import { createOrGetChat, getMyChats, addChatMember } from './chat-api';
 import type { MapEvent, UserRequestStatus, EventRequestsResponse, EventRequest, ChatListItem } from './types';
 
 export interface EventDetailsCallbacks {
@@ -505,8 +505,9 @@ function attachEventDetailsListeners(container: HTMLElement): void {
         // Auto-create chat and add user
         const chatResult = await createOrGetChat(state.event.id, state.event.title);
         if (chatResult.success && chatResult.chat_id) {
-          // User will be added via backend trigger
-          telegramAuth.showAlert('Учасника додано! Чат буде доступний.');
+          // Add the new user to the chat
+          await addChatMember(chatResult.chat_id, userId, 'member');
+          telegramAuth.showAlert('Учасника додано до чату!');
         }
         
         // Refresh requests
