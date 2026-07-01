@@ -47,6 +47,36 @@ export class EventsService {
     throw lastError;
   }
 
+  static async getEventById(eventId: string): Promise<{ success: boolean; event?: MapEvent; error?: string }> {
+    try {
+      const { data, error } = await supabase
+        .from('events')
+        .select('*')
+        .eq('id', eventId)
+        .single();
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+
+      return {
+        success: true,
+        event: this.mapDbEventToMapEvent(data),
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  static async refreshEvents(
+    params: NearbyEventsParams
+  ): Promise<NearbyEventsResult> {
+    return this.getNearbyEvents(params);
+  }
+
   static async getNearbyEvents(
     params: NearbyEventsParams
   ): Promise<NearbyEventsResult> {
@@ -129,6 +159,38 @@ export class EventsService {
       minute: '2-digit',
     };
     return date.toLocaleDateString('uk-UA', options);
+  }
+
+  private static mapDbEventToMapEvent(event: Record<string, unknown>): MapEvent {
+    return {
+      id: event.id as string,
+      title: event.title as string,
+      description: (event.description as string) || null,
+      category: event.category as MapEvent['category'],
+      event_type: 'in_person',
+      latitude: event.latitude as number,
+      longitude: event.longitude as number,
+      location_name: (event.location_name as string) || null,
+      location_address: (event.location_address as string) || null,
+      event_date: event.event_date as string,
+      event_end_date: (event.event_end_date as string) || null,
+      max_participants: event.max_participants as number,
+      current_participants: event.current_participants as number,
+      price: event.price as number,
+      currency: (event.currency as string) || 'UAH',
+      photo_url: (event.photo_url as string) || null,
+      status: (event.status as string) || 'active',
+      requires_approval: event.requires_approval as boolean,
+      is_premium_only: event.is_premium_only as boolean,
+      organizer: {
+        id: event.organizer_id as string,
+        username: null,
+        first_name: null,
+        avatar_url: null,
+      },
+      distance: 0,
+      created_at: event.created_at as string,
+    };
   }
 }
 

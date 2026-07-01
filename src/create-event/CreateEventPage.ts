@@ -7,6 +7,7 @@ import { CreateEventDetails } from './CreateEventDetails';
 import { CreateEventLocation } from './CreateEventLocation';
 import { CreateEventSettings } from './CreateEventSettings';
 import { CreateEventValidation } from './CreateEventValidation';
+import { CreateEventService } from '../events/index';
 
 export interface CreateEventPageCallbacks {
   onBack: () => void;
@@ -423,23 +424,28 @@ export class CreateEventPage {
     this.setLoading(true);
 
     try {
-      // Prepare event data for API call
-      void this.prepareEventData();
-      // In production, send to API here
-      // For now, simulate success
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      this.showSuccess();
-      this.clearDraft();
-      
-      // Notify parent
-      this.callbacks.onEventCreated?.('mock-event-id');
-      
-      // Navigate back after showing success
-      setTimeout(() => {
-        this.callbacks.onBack();
-      }, 2000);
-      
+      const result = await CreateEventService.createEvent({
+        draft: this.draft,
+        onProgress: (stage: string) => {
+          this.updateProgress(stage);
+        },
+      });
+
+      if (result.success) {
+        this.showSuccess();
+        this.clearDraft();
+
+        // Notify parent with created event
+        this.callbacks.onEventCreated?.(result.eventId || '');
+
+        // Navigate back after showing success
+        setTimeout(() => {
+          this.callbacks.onBack();
+        }, 2000);
+      } else {
+        this.callbacks.onError?.(result.error || 'Failed to create event');
+        this.setLoading(false);
+      }
     } catch (error) {
       console.error('Failed to create event:', error);
       this.callbacks.onError?.('Failed to create event. Please try again.');
@@ -447,32 +453,11 @@ export class CreateEventPage {
     }
   }
 
-  private prepareEventData(): object {
-    const eventDateTime = new Date(this.draft.date!);
-    const [hours, minutes] = this.draft.time.split(':').map(Number);
-    eventDateTime.setHours(hours, minutes, 0, 0);
-
-    const endDateTime = new Date(eventDateTime);
-    endDateTime.setMinutes(endDateTime.getMinutes() + this.draft.duration);
-
-    return {
-      title: this.draft.title,
-      description: this.draft.description,
-      category: this.draft.category,
-      event_date: eventDateTime.toISOString(),
-      event_end_date: endDateTime.toISOString(),
-      latitude: this.draft.location!.latitude,
-      longitude: this.draft.location!.longitude,
-      location_name: this.draft.location!.name || '',
-      location_address: this.draft.location!.address,
-      max_participants: this.draft.maxParticipants,
-      price: this.draft.isPaid ? this.draft.price : 0,
-      currency: this.draft.currency,
-      requires_approval: this.draft.requiresApproval,
-      is_private: this.draft.isPrivate,
-      premium_only: this.draft.premiumOnly,
-      allow_guests: this.draft.allowGuests,
-    };
+  private updateProgress(stage: string): void {
+    const progressElement = this.container.querySelector('.submit-progress-text');
+    if (progressElement) {
+      progressElement.textContent = stage;
+    }
   }
 
   private setLoading(loading: boolean): void {
