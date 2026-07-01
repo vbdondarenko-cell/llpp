@@ -18,6 +18,8 @@ import { EventsService } from './events-service';
 import { PremiumBottomSheet } from './premium-bottom-sheet';
 // Sprint 3.1: Premium Create Event Screen
 import { CreateEventPage } from './create-event';
+// Sprint 3.5: Instant Map Sync
+import { getMapSync, getEventSync, showSuccessToast, type MapSync, type EventSync } from './events/index';
 import { renderEventDetails, cleanupEventDetails } from './event-details';
 import { cleanup as cleanupChat } from './chat';
 import { renderPremiumScreen, cleanup as cleanupPremium } from './premium';
@@ -52,6 +54,9 @@ let mapInstance: LinkUpMap | null = null;
 let bottomSheetInstance: PremiumBottomSheet | null = null;
 // Sprint 3.1: Premium Create Event Page instance
 let createEventPageInstance: CreateEventPage | null = null;
+// Sprint 3.5: Map and Event Sync instances
+let mapSyncInstance: MapSync | null = null;
+let eventSyncInstance: EventSync | null = null;
 let mapContainer: HTMLElement | null = null;
 let bottomSheetContainer: HTMLElement | null = null;
 
@@ -656,12 +661,52 @@ function renderCreateEvent(): void {
       state.currentView = 'map';
       renderMap();
     },
-    onEventCreated: (eventId) => {
-      console.log('Event created:', eventId);
-      telegramAuth.showAlert('Подію створено!');
-      createEventPageInstance = null;
+    onEventCreated: async (eventId) => {
+      console.log('Sprint 3.5: Event created:', eventId);
+      
+      // Close Create Event page
+      if (createEventPageInstance) {
+        createEventPageInstance.destroy();
+        createEventPageInstance = null;
+      }
+      
+      // Switch to map view
       state.currentView = 'map';
-      renderMap();
+      
+      try {
+        // Sprint 3.5: Refresh events from Supabase
+        if (eventSyncInstance) {
+          const events = await eventSyncInstance.loadEvents();
+          state.events = events;
+          
+          // Find the new event
+          const newEvent = events.find((e: MapEvent) => e.id === eventId);
+          
+          if (newEvent) {
+            // Update map markers
+            mapInstance?.updateMarkers(events, state.userLocation!);
+            
+            // Sprint 3.5: Fly camera to new event (1200ms)
+            if (mapInstance) {
+              mapInstance.flyTo({ latitude: newEvent.latitude, longitude: newEvent.longitude }, 15);
+            }
+            
+            // Sprint 3.5: Open Bottom Sheet with new event
+            setTimeout(() => {
+              handleMarkerTap(newEvent);
+            }, 1300);
+          }
+        }
+        
+        // Sprint 3.5: Success toast
+        showSuccessToast('Подію створено!');
+        
+      } catch (error) {
+        console.error('Sprint 3.5: Error syncing new event:', error);
+        showSuccessToast('Подію створено!');
+        // Still refresh map
+        renderMap();
+      }
     },
     onError: (error) => {
       telegramAuth.showAlert(error);
@@ -873,6 +918,56 @@ function initMapComponents(location: Location): void {
   // Achievements button
   document.getElementById('achievements-btn')?.addEventListener('click', () => {
     renderAchievements();
+  });
+
+  // Sprint 3.5: Initialize map sync
+  mapSyncInstance = getMapSync({ flyDuration: 1200, flyZoom: 15 });
+  if (mapInstance) {
+    mapSyncInstance.attach({
+      flyTo: (options: { center: [number, number]; zoom?: number }) => {
+        mapInstance!.flyTo({ longitude: options.center[0], latitude: options.center[1] }, options.zoom);
+      },
+      getZoom: () => {
+        // Use private map access or default zoom
+        return 13;
+      },
+      getCenter: () => {
+        const center = mapInstance!.getCenter();
+        return { lat: center.lat, lng: center.lng };
+      },
+    });
+  }
+
+  // Sprint 3.5: Initialize event sync with realtime
+  eventSyncInstance = getEventSync({
+    userLocation: location,
+    radiusKm: 10,
+    enableRealtime: true,
+    mapSync: mapSyncInstance,
+  });
+  eventSyncInstance.setCallbacks({
+    onEventsLoaded: (events: MapEvent[]) => {
+      state.events = events;
+      mapInstance?.updateMarkers(events, location);
+    },
+    onEventAdded: (event: MapEvent) => {
+      // Add marker will be handled by mapInstance.updateMarkers
+      // But we can fly to new event
+      if (mapInstance && eventSyncInstance) {
+        mapInstance.flyTo({ latitude: event.latitude, longitude: event.longitude }, 15);
+      }
+    },
+    onEventUpdated: (_event: MapEvent) => {
+      // Refresh markers
+      eventSyncInstance?.loadEvents();
+    },
+    onEventRemoved: (_eventId: string) => {
+      // Refresh markers
+      eventSyncInstance?.loadEvents();
+    },
+    onError: (error: string) => {
+      console.error('Event sync error:', error);
+    },
   });
 
   // Sprint 2.2: Load events nearby
