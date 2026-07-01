@@ -9,6 +9,17 @@ declare global {
   }
 }
 
+interface AuthResult {
+  success: boolean;
+  error?: string;
+  user?: {
+    id: string;
+    telegram_id: number;
+    username?: string;
+    first_name: string;
+  };
+}
+
 export interface TelegramWebApp {
   initData: string;
   initDataUnsafe: TelegramInitDataUnsafe;
@@ -158,6 +169,52 @@ class TelegramAuth {
     // This requires server-side validation for security
     // Client-side validation is for demo purposes only
     return true;
+  }
+
+  // Authenticate via Supabase Edge Function
+  public async authenticate(): Promise<AuthResult> {
+    if (!this.webApp?.initData) {
+      // Demo mode - no Telegram WebApp
+      return { success: false, error: 'No Telegram WebApp' };
+    }
+
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!supabaseUrl) {
+        return { success: false, error: 'Supabase URL not configured' };
+      }
+
+      // Call Edge Function to authenticate
+      const response = await fetch(`${supabaseUrl}/functions/v1/telegram-auth`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          initData: this.webApp.initData,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return { success: false, error: error.error || 'Authentication failed' };
+      }
+
+      const result: AuthResult = await response.json();
+
+      if (result.success && result.user) {
+        // Try to get session from localStorage or establish one
+        // The Edge Function creates/finds user, but doesn't return JWT
+        // For now, store the telegram_id in localStorage as a fallback
+        localStorage.setItem('telegram_id', result.user.telegram_id.toString());
+        localStorage.setItem('telegram_user_id', result.user.id);
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Authentication error:', error);
+      return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
   }
 
   // Get user data for profile creation
