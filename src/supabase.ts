@@ -20,14 +20,34 @@ export const supabase: SupabaseClient = createClient(
   }
 );
 
+// Get stored telegram_id from localStorage
+function getStoredTelegramId(): number | null {
+  const stored = localStorage.getItem('telegram_id');
+  return stored ? parseInt(stored) : null;
+}
+
 // Profile API functions
 export async function getProfile(): Promise<Profile | null> {
-  const { data, error } = await supabase.rpc('get_profile_by_user_id');
-  if (error) {
-    console.error('Error fetching profile:', error);
-    return null;
+  // Try with auth.uid() first
+  let result = await supabase.rpc('get_profile_by_user_id');
+  
+  if (result.data) {
+    return result.data as Profile;
   }
-  return data as Profile;
+  
+  // Fallback: try with telegram_id from localStorage
+  const telegramId = getStoredTelegramId();
+  if (telegramId) {
+    const fallbackResult = await supabase.rpc('get_profile_by_telegram_id', {
+      p_telegram_id: telegramId
+    });
+    
+    if (fallbackResult.data) {
+      return fallbackResult.data as Profile;
+    }
+  }
+  
+  return null;
 }
 
 export async function createProfile(
@@ -87,7 +107,10 @@ export async function getInterests(): Promise<Interest[]> {
 }
 
 export async function getUserInterests(): Promise<Interest[]> {
-  const { data, error } = await supabase.rpc('get_user_interests');
+  const telegramId = getStoredTelegramId();
+  const { data, error } = await supabase.rpc('get_user_interests', {
+    p_telegram_id: telegramId
+  });
   if (error) {
     console.error('Error fetching user interests:', error);
     return [];
@@ -96,8 +119,10 @@ export async function getUserInterests(): Promise<Interest[]> {
 }
 
 export async function setUserInterests(interestIds: string[]): Promise<boolean> {
+  const telegramId = getStoredTelegramId();
   const { error } = await supabase.rpc('set_user_interests', {
     p_interest_ids: interestIds,
+    p_telegram_id: telegramId,
   });
   if (error) {
     console.error('Error setting user interests:', error);

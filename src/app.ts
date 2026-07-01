@@ -4,7 +4,6 @@ import { telegramAuth } from './telegram-auth';
 import './styles.css';
 import {
   getProfile,
-  createProfile,
   updateProfile,
   getInterests,
   getUserInterests,
@@ -115,43 +114,75 @@ async function authenticateUser(): Promise<void> {
   state.isLoading = true;
 
   try {
+    // First, try to authenticate via Edge Function if Telegram WebApp is available
+    if (telegramAuth.isAvailable()) {
+      const authResult = await telegramAuth.authenticate();
+      
+      if (authResult.success && authResult.user) {
+        // Auth succeeded via Edge Function
+        console.log('Authenticated via Edge Function:', authResult.user);
+        
+        // Now get the profile
+        const profile = await getProfile();
+        if (profile) {
+          state.profile = profile;
+          state.isAuthenticated = true;
+
+          if (profile.has_completed_onboarding) {
+            initUserLocation();
+          } else {
+            await loadInterests();
+            renderOnboarding();
+          }
+        } else {
+          // Profile doesn't exist, create it
+          await loadInterests();
+          renderOnboarding();
+        }
+        state.isLoading = false;
+        return;
+      } else if (authResult.error && authResult.error !== 'No Telegram WebApp') {
+        console.log('Edge Function auth failed:', authResult.error);
+        // Fall through to local authentication
+      }
+    }
+
+    // Fallback: Try local authentication using Telegram user data
     const userData = telegramAuth.getUserData();
 
     if (!userData) {
       console.log('Running in demo mode');
       renderOnboarding();
+      state.isLoading = false;
       return;
     }
 
-    const profileId = await createProfile(
-      userData.telegramId,
-      userData.username,
-      userData.firstName,
-      userData.lastName,
-      userData.avatarUrl
-    );
+    // Check if profile exists in localStorage (for demo mode)
+    const storedTelegramId = localStorage.getItem('telegram_id');
+    if (storedTelegramId && parseInt(storedTelegramId) === userData.telegramId) {
+      // Try to get existing profile
+      const profile = await getProfile();
+      if (profile) {
+        state.profile = profile;
+        state.isAuthenticated = true;
 
-    if (!profileId) {
-      console.error('Failed to create profile');
-      renderOnboarding();
-      return;
-    }
-
-    const profile = await getProfile();
-    if (profile) {
-      state.profile = profile;
-      state.isAuthenticated = true;
-
-      if (profile.has_completed_onboarding) {
-        initUserLocation();
-      } else {
-        await loadInterests();
-        renderOnboarding();
+        if (profile.has_completed_onboarding) {
+          initUserLocation();
+        } else {
+          await loadInterests();
+          renderOnboarding();
+        }
+        state.isLoading = false;
+        return;
       }
-    } else {
-      await loadInterests();
-      renderOnboarding();
     }
+
+    // Store telegram_id for demo mode
+    localStorage.setItem('telegram_id', userData.telegramId.toString());
+    
+    // Profile doesn't exist, go to onboarding
+    await loadInterests();
+    renderOnboarding();
   } catch (error) {
     console.error('Authentication error:', error);
     await loadInterests();
@@ -252,16 +283,20 @@ function renderOnboardingStep(): void {
               <span class="counter-total-premium"> / 3</span>
               <span class="counter-label-premium ${selectedCount >= 3 ? 'ready' : ''}">обрано ${selectedCount >= 3 ? '✓' : ''}</span>
             </div>
-            <button class="premium-btn-final" id="onboarding-next" ${selectedCount < 3 ? 'disabled' : ''}>
-              <div class="btn-shimmer"></div>
-              <div class="btn-text-container">
-                <span class="btn-helper">Оберіть щонайменше 3 інтереси</span>
-                <span class="btn-ready-text">Продовжити</span>
-              </div>
+            <button class="premium-btn-final" id="onboarding-next" ${selectedCount < 3 || state.isLoading ? 'disabled' : ''}>
+              ${state.isLoading ? `
+                <div class="btn-spinner"></div>
+              ` : `
+                <div class="btn-shimmer"></div>
+                <div class="btn-text-container">
+                  <span class="btn-helper">Оберіть щонайменше 3 інтереси</span>
+                  <span class="btn-ready-text">Продовжити</span>
+                </div>
+              `}
             </button>
           </div>
         ` : `
-          <button class="primary-btn" id="onboarding-next">
+          <button class="primary-btn" id="onboarding-next" ${state.isLoading ? 'disabled' : ''}>
             ${isLastStep ? 'Почати' : 'Далі'}
           </button>
         `}
@@ -343,22 +378,36 @@ function renderInterestSelectionPremium(): string {
 function attachOnboardingListeners(): void {
   const nextBtn = document.getElementById('onboarding-next');
   const backBtn = document.getElementById('onboarding-back');
+  
+  let isProcessing = false;
 
   nextBtn?.addEventListener('click', async () => {
+    // Prevent double click
+    if (isProcessing || state.isLoading) return;
+    isProcessing = true;
+    
+    // Disable button visually
+    nextBtn.setAttribute('disabled', 'true');
+    
     telegramAuth.hapticFeedback('medium');
 
-    if (currentOnboardingStep === 2) {
-      const selectedInterests = state.userInterests.map(i => i.id);
-      if (selectedInterests.length >= 3) {
-        await setUserInterests(selectedInterests);
+    try {
+      if (currentOnboardingStep === 2) {
+        const selectedInterests = state.userInterests.map(i => i.id);
+        if (selectedInterests.length >= 3) {
+          await setUserInterests(selectedInterests);
+        }
       }
-    }
 
-    if (currentOnboardingStep === onboardingSteps.length - 1) {
-      await completeOnboarding();
-    } else {
-      currentOnboardingStep++;
-      renderOnboardingStep();
+      if (currentOnboardingStep === onboardingSteps.length - 1) {
+        await completeOnboarding();
+      } else {
+        currentOnboardingStep++;
+        renderOnboardingStep();
+      }
+    } finally {
+      isProcessing = false;
+      nextBtn.removeAttribute('disabled');
     }
   });
 
@@ -431,12 +480,27 @@ function attachOnboardingListeners(): void {
 
 async function completeOnboarding(): Promise<void> {
   state.isLoading = true;
-  await updateProfile(undefined, undefined, undefined, undefined, undefined, undefined, true);
-  const selectedIds = state.userInterests.map(i => i.id);
-  await setUserInterests(selectedIds);
-  state.isLoading = false;
-  telegramAuth.hapticNotification('success');
-  initUserLocation();
+  
+  try {
+    // Update profile with onboarding completed
+    await updateProfile(undefined, undefined, undefined, undefined, undefined, undefined, true);
+    
+    // Save interests
+    const selectedIds = state.userInterests.map(i => i.id);
+    if (selectedIds.length >= 3) {
+      await setUserInterests(selectedIds);
+    }
+    
+    state.isLoading = false;
+    telegramAuth.hapticNotification('success');
+    initUserLocation();
+  } catch (error) {
+    console.error('Complete onboarding error:', error);
+    state.isLoading = false;
+    telegramAuth.showAlert('Помилка завершення реєстрації');
+    // Still continue to map even if save failed
+    initUserLocation();
+  }
 }
 
 // ============ MAP SCREEN ============
