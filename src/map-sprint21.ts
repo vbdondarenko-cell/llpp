@@ -1,7 +1,7 @@
 // Sprint 2.1: Map Foundation - LinkUp
 // Production-quality Mapbox map with dark theme
 
-import type { Location } from './types';
+import type { Location, MapEvent } from './types';
 
 // Mapbox GL JS type declarations
 declare global {
@@ -353,6 +353,85 @@ export class LinkUpMap {
     this.currentLocation = location;
     this.updateMarkerPosition([location.longitude, location.latitude]);
     this.flyTo(location, 15);
+  }
+
+  // Sprint 2.2: Event markers management
+  private eventMarkers: Map<string, HTMLElement> = new Map();
+
+  public updateMarkers(events: MapEvent[], _userLocation: Location): void {
+    if (!this.isReady) return;
+
+    // Remove existing event markers
+    this.eventMarkers.forEach(marker => marker.remove());
+    this.eventMarkers.clear();
+
+    // Add new event markers
+    events.forEach(event => {
+      this.addEventMarker(event);
+    });
+  }
+
+  private addEventMarker(event: MapEvent): void {
+    if (!this.map || !this.isReady) return;
+
+    // Create marker element
+    const marker = document.createElement('div');
+    marker.className = 'event-marker-sprint22';
+    marker.dataset.eventId = event.id;
+
+    // Category color dot
+    const dot = document.createElement('div');
+    dot.className = 'event-marker-dot';
+    dot.style.backgroundColor = this.getCategoryColor(event.category);
+    marker.appendChild(dot);
+
+    // Add click handler
+    marker.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.handleMarkerClick(event);
+    });
+
+    // Store reference
+    this.eventMarkers.set(event.id, marker);
+
+    // Note: In production, we'd use mapboxgl.Marker
+    // For Sprint 2.2, we'll use a simplified overlay approach
+    this.container.appendChild(marker);
+  }
+
+  private handleMarkerClick(event: MapEvent): void {
+    if (this.onEventClick) {
+      this.onEventClick(event);
+    }
+  }
+
+  public selectMarker(eventId: string): void {
+    // Remove previous selection
+    this.eventMarkers.forEach((marker, id) => {
+      marker.classList.toggle('selected', id === eventId);
+    });
+  }
+
+  private getCategoryColor(category: string): string {
+    const colors: Record<string, string> = {
+      party: '#ef4444',
+      sport: '#22c55e',
+      food: '#f97316',
+      music: '#8b5cf6',
+      art: '#ec4899',
+      nature: '#10b981',
+      games: '#3b82f6',
+      networking: '#6366f1',
+      education: '#f59e0b',
+      other: '#6b7280',
+    };
+    return colors[category] || colors.other;
+  }
+
+  private onEventClick?: (event: MapEvent) => void;
+
+  public setOnEventClick(callback: (event: MapEvent) => void): void {
+    this.onEventClick = callback;
   }
 
   public resize(): void {

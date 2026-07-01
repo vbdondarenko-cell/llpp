@@ -1,5 +1,5 @@
 // LinkUp Alpha - Sprint 10 Main Application
-import type { AppState, Location } from './types';
+import type { AppState, Location, MapEvent } from './types';
 import { telegramAuth } from './telegram-auth';
 import './styles.css';
 import {
@@ -12,7 +12,9 @@ import {
 import { CATEGORIES } from './events';
 // Sprint 2.1: Use new map implementation
 import { LinkUpMap } from './map-sprint21';
-import { BottomSheet } from './components';
+// Sprint 2.2: Events service
+import { EventsService } from './events-service';
+import { BottomSheet, createEventCardList } from './components';
 import { renderEventCreationScreen } from './event-creation';
 import { renderEventDetails, cleanupEventDetails } from './event-details';
 import { cleanup as cleanupChat } from './chat';
@@ -829,30 +831,96 @@ function initMapComponents(location: Location): void {
   document.getElementById('achievements-btn')?.addEventListener('click', () => {
     renderAchievements();
   });
+
+  // Sprint 2.2: Load events nearby
+  loadEvents(location);
 }
 
-// Sprint 2.1: Events and markers will be loaded in future sprints
-// Keeping for future implementation
+// Sprint 2.2: Load events using EventsService
+async function loadEvents(location: Location): Promise<void> {
+  state.isLoading = true;
+  
+  const result = await EventsService.getNearbyEvents({
+    location,
+    radiusKm: 50, // km - show events in wider area for demo
+    category: state.selectedCategory as import('./types').EventCategory || null,
+    limit: 50,
+  });
 
-// Sprint 2.1: Empty bottom sheet - will show events in future sprints
+  state.isLoading = false;
+
+  if (result.success) {
+    state.events = result.events;
+    updateBottomSheet();
+    
+    // Update map markers
+    if (mapInstance) {
+      mapInstance.updateMarkers(state.events, location);
+    }
+  } else {
+    console.error('Failed to load events:', result.error);
+    state.events = [];
+  }
+}
+
+// Sprint 2.2: Bottom sheet shows events
 export function updateBottomSheet(): void {
   if (!bottomSheetInstance) return;
-  bottomSheetInstance.open('collapsed');
+
+  const content = bottomSheetInstance.getContent();
+  if (!content) return;
+
+  // Filter events by category if selected
+  const filteredEvents = state.selectedCategory
+    ? state.events.filter(e => e.category === state.selectedCategory)
+    : state.events;
+
+  content.innerHTML = `
+    <div class="events-list-header">
+      <h2 class="events-list-title">Події поруч</h2>
+      <span class="events-count">${filteredEvents.length}</span>
+    </div>
+  `;
+
+  if (filteredEvents.length === 0) {
+    content.innerHTML += `
+      <div class="empty-events">
+        <div class="empty-icon">🔍</div>
+        <p>Немає подій поблизу</p>
+        <span>Спробуйте обрати іншу категорію</span>
+      </div>
+    `;
+  } else {
+    // Sprint 2.2: Create event cards
+    const eventsList = createEventCardList(filteredEvents, {
+      onClick: (event) => handleEventClick(event),
+      onJoin: (eventId) => handleJoinEvent(eventId),
+    });
+    content.appendChild(eventsList);
+  }
+
+  bottomSheetInstance.open('half');
 }
 
-// Sprint 2.1: Event click handling will be implemented in future sprints
-// function handleEventClick(event: MapEvent): void {
-//   telegramAuth.hapticFeedback('medium');
-//   
-//   if (mapInstance) {
-//     mapInstance.flyTo({ latitude: event.latitude, longitude: event.longitude }, 15);
-//     mapInstance.selectMarker(event.id);
-//   }
-//
-//   // Navigate to event details
-//   const currentUserId = state.profile?.user_id || null;
-//   renderEventDetailsScreen(event.id, currentUserId);
-// }
+// Sprint 2.2: Event click handling
+function handleEventClick(event: MapEvent): void {
+  telegramAuth.hapticFeedback('medium');
+  
+  if (mapInstance) {
+    mapInstance.flyTo({ latitude: event.latitude, longitude: event.longitude }, 15);
+    mapInstance.selectMarker(event.id);
+  }
+
+  // Navigate to event details
+  const currentUserId = state.profile?.user_id || null;
+  renderEventDetailsScreen(event.id, currentUserId);
+}
+
+// Sprint 2.2: Event join handling
+function handleJoinEvent(_eventId: string): void {
+  telegramAuth.hapticNotification('success');
+  telegramAuth.showAlert('Ви приєдналися до події!');
+}
 
 function renderEventDetailsScreen(eventId: string, currentUserId: string | null): void {
   if (!appElement) return;
@@ -908,10 +976,10 @@ function initCategoryFilters(): void {
       const category = (chip as HTMLElement).dataset.category || null;
       state.selectedCategory = category;
 
-      // Sprint 2.1: Don't load events yet (future sprint)
-      // if (state.userLocation) {
-      //   loadEvents(state.userLocation);
-      // }
+      // Sprint 2.2: Reload events with new filter
+      if (state.userLocation) {
+        loadEvents(state.userLocation);
+      }
     });
   });
 }
