@@ -952,3 +952,18 @@ body {
     transform: translateY(0);
   }
 }
+
+/* Loading Spinner for Buttons */
+.btn-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: btnSpin 0.8s linear infinite;
+  margin: 0 auto;
+}
+
+@keyframes btnSpin {
+  to { transform: rotate(360deg); }
+}
