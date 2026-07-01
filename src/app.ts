@@ -14,7 +14,8 @@ import { CATEGORIES } from './events';
 import { LinkUpMap } from './map-sprint21';
 // Sprint 2.2: Events service
 import { EventsService } from './events-service';
-import { BottomSheet, createEventCardList } from './components';
+// Sprint 2.4: Premium bottom sheet
+import { PremiumBottomSheet } from './premium-bottom-sheet';
 import { renderEventCreationScreen } from './event-creation';
 import { renderEventDetails, cleanupEventDetails } from './event-details';
 import { cleanup as cleanupChat } from './chat';
@@ -46,7 +47,8 @@ const state: AppState = {
 
 // Map instance
 let mapInstance: LinkUpMap | null = null;
-let bottomSheetInstance: BottomSheet | null = null;
+// Sprint 2.4: Premium bottom sheet instance
+let bottomSheetInstance: PremiumBottomSheet | null = null;
 let mapContainer: HTMLElement | null = null;
 let bottomSheetContainer: HTMLElement | null = null;
 
@@ -823,10 +825,28 @@ function initMapComponents(location: Location): void {
     mapInstance.setUserLocation(location);
   }
 
-  // Initialize bottom sheet
-  bottomSheetInstance = new BottomSheet(bottomSheetContainer, {
+  // Sprint 2.4: Initialize premium bottom sheet
+  bottomSheetInstance = new PremiumBottomSheet(document.createElement('div'), {
+    onJoin: (eventId) => {
+      handleJoinEvent(eventId);
+    },
+    onShare: (_eventId) => {
+      telegramAuth.hapticFeedback('light');
+      telegramAuth.showAlert('Поділитися');
+    },
+    onSave: (_eventId) => {
+      telegramAuth.hapticFeedback('light');
+      telegramAuth.showAlert('Збережено!');
+    },
+    onReport: (_eventId) => {
+      telegramAuth.hapticFeedback('medium');
+      telegramAuth.showAlert('Скаргу надіслано');
+    },
+    onClose: () => {
+      state.bottomSheetState = 'collapsed';
+    },
     onStateChange: (newState) => {
-      state.bottomSheetState = newState;
+      state.bottomSheetState = newState === 'closed' ? 'collapsed' : newState === 'peek' ? 'half' : 'full';
     },
   });
 
@@ -868,160 +888,21 @@ async function loadEvents(location: Location): Promise<void> {
 
 // Sprint 2.2: Bottom sheet shows events
 export function updateBottomSheet(): void {
-  if (!bottomSheetInstance) return;
-
-  const content = bottomSheetInstance.getContent();
-  if (!content) return;
-
-  // Filter events by category if selected
-  const filteredEvents = state.selectedCategory
-    ? state.events.filter(e => e.category === state.selectedCategory)
-    : state.events;
-
-  content.innerHTML = `
-    <div class="events-list-header">
-      <h2 class="events-list-title">Події поруч</h2>
-      <span class="events-count">${filteredEvents.length}</span>
-    </div>
-  `;
-
-  if (filteredEvents.length === 0) {
-    content.innerHTML += `
-      <div class="empty-events">
-        <div class="empty-icon">🔍</div>
-        <p>Немає подій поблизу</p>
-        <span>Спробуйте обрати іншу категорію</span>
-      </div>
-    `;
-  } else {
-    // Sprint 2.2: Create event cards
-    const eventsList = createEventCardList(filteredEvents, {
-      onClick: (event) => handleEventClick(event),
-      onJoin: (eventId) => handleJoinEvent(eventId),
-    });
-    content.appendChild(eventsList);
-  }
-
-  bottomSheetInstance.open('half');
+  // Sprint 2.4: Premium bottom sheet handles event previews
+  // This function is kept for compatibility but doesn't open the sheet
+  // Events are shown via marker taps using the premium bottom sheet
 }
 
-// Sprint 2.2: Event click handling
-function handleEventClick(event: MapEvent): void {
-  telegramAuth.hapticFeedback('medium');
-  
-  if (mapInstance) {
-    mapInstance.flyTo({ latitude: event.latitude, longitude: event.longitude }, 15);
-    mapInstance.selectMarker(event.id);
-  }
-
-  // Navigate to event details
-  const currentUserId = state.profile?.user_id || null;
-  renderEventDetailsScreen(event.id, currentUserId);
-}
-
-// Sprint 2.2: Event join handling
+// Sprint 2.4: Event join handling
 function handleJoinEvent(_eventId: string): void {
   telegramAuth.hapticNotification('success');
   telegramAuth.showAlert('Ви приєдналися до події!');
 }
 
-// Sprint 2.3: Handle marker tap - show event preview
+// Sprint 2.4: Handle marker tap - show premium bottom sheet
 function handleMarkerTap(event: MapEvent): void {
   if (!bottomSheetInstance) return;
-
-  const content = bottomSheetInstance.getContent();
-  if (!content) return;
-
-  // Show event preview in bottom sheet
-  content.innerHTML = createEventPreviewHTML(event);
-  
-  // Add join button handler
-  const joinBtn = content.querySelector('#event-preview-join');
-  if (joinBtn) {
-    joinBtn.addEventListener('click', () => {
-      handleJoinEvent(event.id);
-    });
-  }
-
-  // Add close handler
-  const closeBtn = content.querySelector('#event-preview-close');
-  if (closeBtn) {
-    closeBtn.addEventListener('click', () => {
-      bottomSheetInstance?.open('collapsed');
-    });
-  }
-
-  // Open to half/full position
-  bottomSheetInstance.open('half');
-}
-
-// Sprint 2.3: Create event preview HTML
-function createEventPreviewHTML(event: MapEvent): string {
-  const categoryColors: Record<string, string> = {
-    party: '#a855f7',
-    sport: '#22c55e',
-    food: '#f97316',
-    music: '#ec4899',
-    nature: '#10b981',
-    games: '#06b6d4',
-    education: '#eab308',
-    art: '#ef4444',
-    technology: '#6366f1',
-    networking: '#8b5cf6',
-    other: '#6b7280',
-  };
-  const categoryColor = categoryColors[event.category] || categoryColors.other;
-  
-  const eventDate = new Date(event.event_date);
-  const formattedDate = eventDate.toLocaleDateString('uk-UA', { 
-    day: 'numeric', 
-    month: 'short' 
-  });
-  const formattedTime = eventDate.toLocaleTimeString('uk-UA', { 
-    hour: '2-digit', 
-    minute: '2-digit' 
-  });
-  
-  const distanceKm = event.distance < 1 
-    ? `${Math.round(event.distance * 1000)}м` 
-    : `${event.distance.toFixed(1)}км`;
-  
-  const imageUrl = event.photo_url || 'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=400';
-
-  return `
-    <div class="event-preview">
-      <div class="event-preview-header">
-        <button id="event-preview-close" class="event-preview-close">×</button>
-      </div>
-      <div class="event-preview-image" style="background-image: url('${imageUrl}')">
-        <div class="event-preview-category" style="background-color: ${categoryColor}">
-          ${event.category}
-        </div>
-        ${event.is_premium_only ? '<div class="event-preview-premium">★ Premium</div>' : ''}
-      </div>
-      <div class="event-preview-content">
-        <h2 class="event-preview-title">${event.title}</h2>
-        <div class="event-preview-meta">
-          <span class="event-preview-distance">📍 ${distanceKm}</span>
-          <span class="event-preview-datetime">🗓 ${formattedDate}, ${formattedTime}</span>
-        </div>
-        <div class="event-preview-participants">
-          <span>👥 ${event.current_participants}/${event.max_participants}</span>
-          ${event.price > 0 ? `<span>💰 ${event.price} ${event.currency}</span>` : '<span class="free">Безкоштовно</span>'}
-        </div>
-        <div class="event-preview-organizer">
-          ${event.organizer.avatar_url 
-            ? `<img src="${event.organizer.avatar_url}" alt="${event.organizer.first_name || 'Organizer'}" class="organizer-avatar">`
-            : '<div class="organizer-avatar-placeholder">👤</div>'
-          }
-          <span>${event.organizer.first_name || event.organizer.username || 'Організатор'}</span>
-        </div>
-        <button id="event-preview-join" class="event-preview-join" disabled>
-          Приєднатися (Скоро)
-        </button>
-      </div>
-    </div>
-  `;
+  bottomSheetInstance.show(event);
 }
 
 function renderEventDetailsScreen(eventId: string, currentUserId: string | null): void {
