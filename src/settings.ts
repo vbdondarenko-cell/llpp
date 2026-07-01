@@ -16,6 +16,7 @@ export interface SettingsCallbacks {
   onBack?: () => void;
   onPremium?: () => void;
   onLogout?: () => void;
+  onAdmin?: () => void;
 }
 
 interface SettingsState {
@@ -48,6 +49,18 @@ export async function renderSettingsScreen(
 function renderSettingsUI(container: HTMLElement): void {
   const profile = state.profile;
   if (!profile) return;
+
+  // Check for admin access and show admin section
+  import('./admin-api').then(({ checkAdminAccess }) => {
+    checkAdminAccess().then((isAdmin) => {
+      if (isAdmin) {
+        const adminSection = document.getElementById('admin-section');
+        if (adminSection) {
+          adminSection.style.display = 'block';
+        }
+      }
+    });
+  });
 
   container.innerHTML = `
     <div class="settings-screen">
@@ -218,6 +231,27 @@ function renderSettingsUI(container: HTMLElement): void {
           </div>
         </section>
 
+        <!-- Admin Section (only for admins) -->
+        <section class="settings-section" id="admin-section" style="display: none;">
+          <h2 class="section-title">Адміністрування</h2>
+          <div class="settings-list">
+            <button class="settings-item danger" id="admin-btn">
+              <div class="item-icon danger-icon">
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/>
+                </svg>
+              </div>
+              <div class="item-content">
+                <span class="item-title danger-text">Адмін-панель</span>
+                <span class="item-desc">Керування системою</span>
+              </div>
+              <svg class="item-arrow" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+              </svg>
+            </button>
+          </div>
+        </section>
+
         <!-- Logout -->
         <section class="settings-section">
           <button class="settings-item danger" id="logout-btn">
@@ -340,6 +374,12 @@ function attachSettingsListeners(): void {
         callbacks.onLogout?.();
       }
     });
+  });
+
+  // Admin button
+  document.getElementById('admin-btn')?.addEventListener('click', () => {
+    telegramAuth.hapticFeedback('light');
+    callbacks.onAdmin?.();
   });
 }
 

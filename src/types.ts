@@ -464,3 +464,138 @@ export interface FriendRequestsResult {
   incoming: FriendRequest[];
   outgoing: FriendRequest[];
 }
+
+// Admin Types
+export interface AdminStats {
+  total_users: number;
+  total_events: number;
+  total_premium: number;
+  pending_reports: number;
+  suspended_users: number;
+  banned_users: number;
+  total_messages: number;
+  daily_active_users: number;
+  events_this_week: number;
+  new_users_today: number;
+}
+
+export interface AdminUser {
+  user_id: string;
+  username: string;
+  display_name: string;
+  avatar_url: string;
+  is_suspended: boolean;
+  is_banned: boolean;
+  is_hidden: boolean;
+  suspended_until: string | null;
+  suspension_reason: string | null;
+  ban_reason: string | null;
+  created_at: string;
+  events_created: number;
+  events_joined: number;
+  is_premium: boolean;
+  is_admin: boolean;
+}
+
+export interface AdminEvent {
+  id: string;
+  title: string;
+  description: string;
+  starts_at: string;
+  status: string;
+  is_cancelled: boolean;
+  is_hidden: boolean;
+  created_at: string;
+  organizer_username: string;
+  organizer_name: string;
+  participants_count: number;
+}
+
+export interface UserReport {
+  id: string;
+  reason: string;
+  description: string | null;
+  status: string;
+  resolution_notes: string | null;
+  created_at: string;
+  resolved_at: string | null;
+  reporter_username: string | null;
+  reporter_name: string | null;
+  reported_username: string;
+  reported_name: string;
+  type: 'user';
+}
+
+export interface EventReport {
+  id: string;
+  reason: string;
+  description: string | null;
+  status: string;
+  resolution_notes: string | null;
+  created_at: string;
+  resolved_at: string | null;
+  reporter_username: string | null;
+  event_title: string;
+  type: 'event';
+}
+
+export interface AdminChat {
+  id: string;
+  chat_type: string;
+  event_title: string | null;
+  message_count: number;
+  created_at: string;
+  expires_at: string | null;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  action: string;
+  target_type: string;
+  target_id: string | null;
+  details: Record<string, unknown>;
+  created_at: string;
+  admin_role: string;
+  admin_username: string;
+}
+
+export interface AdminStatsResult {
+  success: boolean;
+  error?: string;
+  stats: AdminStats;
+}
+
+export interface AdminUsersResult {
+  success: boolean;
+  error?: string;
+  users: AdminUser[];
+  total: number;
+}
+
+export interface AdminEventsResult {
+  success: boolean;
+  error?: string;
+  events: AdminEvent[];
+  total: number;
+}
+
+export interface AdminReportsResult {
+  success: boolean;
+  error?: string;
+  reports: (UserReport | EventReport)[];
+  total: number;
+}
+
+export interface AdminChatsResult {
+  success: boolean;
+  error?: string;
+  chats: AdminChat[];
+  total: number;
+}
+
+export interface AuditLogResult {
+  success: boolean;
+  error?: string;
+  logs: AuditLogEntry[];
+  total: number;
+}

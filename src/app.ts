@@ -1,4 +1,4 @@
-// LinkUp Alpha - Sprint 8 Main Application
+// LinkUp Alpha - Sprint 9 Main Application
 import type { AppState, Location, MapEvent, EventCategory } from './types';
 import { telegramAuth } from './telegram-auth';
 import './styles.css';
@@ -23,6 +23,7 @@ import { renderPremiumScreen, cleanup as cleanupPremium } from './premium';
 import { renderAchievementsScreen, cleanupAchievements } from './achievements';
 import { renderProfileScreen, cleanupProfile } from './profile';
 import { renderSettingsScreen, cleanupSettings } from './settings';
+import { renderAdminPanel, cleanupAdmin } from './admin-panel';
 import type { ChatListItem } from './types';
 
 // App state
@@ -604,9 +605,30 @@ function renderSettings(): void {
             telegramAuth.showAlert('Вихід виконано');
             window.location.reload();
           },
+          onAdmin: () => {
+            renderAdmin();
+          },
         });
       }
     });
+  });
+}
+
+function renderAdmin(): void {
+  if (!appElement) return;
+  
+  cleanupEventDetails();
+  cleanupChat();
+  cleanupPremium();
+  cleanupAchievements();
+  cleanupProfile();
+  cleanupSettings();
+  cleanupAdmin();
+  
+  renderAdminPanel(appElement, {
+    onBack: () => {
+      renderProfile();
+    },
   });
 }
 
