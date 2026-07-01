@@ -184,7 +184,7 @@ let currentOnboardingStep = 0;
 const onboardingSteps = [
   { id: 1, title: 'Ласкаво просимо!', description: 'Знаходьте події та людей біля вас', icon: '👋' },
   { id: 2, title: 'Геолокація', description: 'Дозвольте доступ до вашої позиції', icon: '📍' },
-  { id: 3, title: 'Оберіть інтереси', description: 'Ми підберемо найкращі події для вас', icon: '🎯' },
+  { id: 3, title: 'Оберіть інтереси', description: 'Оберіть інтереси, щоб бачити лише події, які вам дійсно цікаві.', icon: '🎯' },
   { id: 4, title: 'Спілкування', description: 'Чатуйте з учасниками подій', icon: '💬' },
   { id: 5, title: 'Почнемо!', description: 'Готові знайти свою компанію?', icon: '🚀' },
 ];
@@ -207,14 +207,16 @@ function renderOnboardingStep(): void {
   const step = onboardingSteps[currentOnboardingStep];
   const isLastStep = currentOnboardingStep === onboardingSteps.length - 1;
   const isInterestStep = step.id === 3;
+  const progressPercent = ((currentOnboardingStep + 1) / onboardingSteps.length) * 100;
 
   appElement.innerHTML = `
-    <div class="onboarding-screen">
+    <div class="onboarding-screen ${isInterestStep ? 'interests-step' : ''}">
       <div class="onboarding-header">
-        <div class="onboarding-progress">
-          ${onboardingSteps.map((_, i) => `
-            <div class="progress-dot ${i <= currentOnboardingStep ? 'active' : ''}"></div>
-          `).join('')}
+        <div class="onboarding-progress-container">
+          <div class="onboarding-progress-bar">
+            <div class="onboarding-progress-fill" style="width: ${progressPercent}%"></div>
+          </div>
+          <span class="onboarding-step-indicator">${currentOnboardingStep + 1} з ${onboardingSteps.length}</span>
         </div>
         ${currentOnboardingStep > 0 ? `
           <button class="back-btn" id="onboarding-back">
@@ -222,22 +224,32 @@ function renderOnboardingStep(): void {
               <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
             </svg>
           </button>
-        ` : '<div style="width: 40px;"></div>'}
+        ` : '<div style="width: 44px;"></div>'}
       </div>
 
       <div class="onboarding-content">
-        <div class="onboarding-icon">${step.icon}</div>
-        <h1 class="onboarding-title">${step.title}</h1>
-        <p class="onboarding-description">${step.description}</p>
-
-        ${isInterestStep ? renderInterestSelection() : renderStepContent(step.id)}
+        ${isInterestStep ? renderInterestSelectionPremium() : `
+          <div class="onboarding-icon">${step.icon}</div>
+          <h1 class="onboarding-title">${step.title}</h1>
+          <p class="onboarding-description">${step.description}</p>
+          ${renderStepContent(step.id)}
+        `}
       </div>
 
       <div class="onboarding-footer">
         ${isInterestStep ? `
-          <button class="primary-btn" id="onboarding-next" disabled>
-            Продовжити
-          </button>
+          <div class="interest-footer-content">
+            <div class="interest-counter" id="interest-counter">
+              <span class="counter-number">0</span>
+              <span class="counter-divider"> / </span>
+              <span class="counter-total">3</span>
+              <span class="counter-label"> обрано</span>
+            </div>
+            <button class="primary-btn premium-btn" id="onboarding-next" disabled>
+              <span class="btn-text">Оберіть щонайменше 3 інтереси</span>
+              <span class="btn-text-ready" style="display: none;">Продовжити</span>
+            </button>
+          </div>
         ` : `
           <button class="primary-btn" id="onboarding-next">
             ${isLastStep ? 'Почати' : 'Далі'}
@@ -295,15 +307,23 @@ function renderStepContent(stepId: number): string {
   }
 }
 
-function renderInterestSelection(): string {
+function renderInterestSelectionPremium(): string {
   return `
-    <div class="interests-container">
-      <p class="interests-hint">Оберіть принаймні 3 інтереси</p>
-      <div class="interests-grid">
+    <div class="interests-premium-container">
+      <div class="interests-header">
+        <h1 class="interests-title">Оберіть інтереси</h1>
+        <p class="interests-subtitle">Оберіть інтереси, щоб бачити лише події, які вам дійсно цікаві.</p>
+      </div>
+      <div class="interests-grid-premium">
         ${state.interests.map(interest => `
-          <button class="interest-chip" data-id="${interest.id}">
-            <span class="interest-icon">${interest.icon || '•'}</span>
-            <span class="interest-name">${interest.name}</span>
+          <button class="interest-chip-premium" data-id="${interest.id}">
+            <span class="chip-icon">${interest.icon || '•'}</span>
+            <span class="chip-label">${interest.name}</span>
+            <div class="chip-check">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+              </svg>
+            </div>
           </button>
         `).join('')}
       </div>
@@ -316,7 +336,7 @@ function attachOnboardingListeners(): void {
   const backBtn = document.getElementById('onboarding-back');
 
   nextBtn?.addEventListener('click', async () => {
-    telegramAuth.hapticFeedback('light');
+    telegramAuth.hapticFeedback('medium');
 
     if (currentOnboardingStep === 2) {
       const selectedInterests = state.userInterests.map(i => i.id);
@@ -341,10 +361,10 @@ function attachOnboardingListeners(): void {
     }
   });
 
-  const chips = document.querySelectorAll('.interest-chip');
-  chips.forEach(chip => {
+  // Premium interest chips
+  const premiumChips = document.querySelectorAll('.interest-chip-premium');
+  premiumChips.forEach(chip => {
     chip.addEventListener('click', () => {
-      telegramAuth.hapticFeedback('light');
       const id = (chip as HTMLElement).dataset.id;
       if (!id) return;
 
@@ -352,17 +372,56 @@ function attachOnboardingListeners(): void {
       if (!interest) return;
 
       const existingIndex = state.userInterests.findIndex(i => i.id === id);
+      
+      // Haptic feedback
+      if (existingIndex >= 0) {
+        telegramAuth.hapticFeedback('light');
+      } else {
+        telegramAuth.hapticFeedback('medium');
+      }
+
       if (existingIndex >= 0) {
         state.userInterests.splice(existingIndex, 1);
         chip.classList.remove('selected');
       } else {
         state.userInterests.push(interest);
         chip.classList.add('selected');
+        
+        // Add spring animation
+        chip.classList.add('chip-pop');
+        setTimeout(() => chip.classList.remove('chip-pop'), 300);
       }
 
+      // Update counter
+      const counter = document.getElementById('interest-counter');
+      if (counter) {
+        const count = state.userInterests.length;
+        counter.innerHTML = `
+          <span class="counter-number ${count >= 3 ? 'counter-ready' : ''}">${count}</span>
+          <span class="counter-divider"> / </span>
+          <span class="counter-total">3</span>
+          <span class="counter-label"> обрано ${count >= 3 ? '✓' : ''}</span>
+        `;
+      }
+
+      // Update button
       const nextBtn = document.getElementById('onboarding-next') as HTMLButtonElement;
       if (nextBtn) {
-        nextBtn.disabled = state.userInterests.length < 3;
+        const isReady = state.userInterests.length >= 3;
+        nextBtn.disabled = !isReady;
+        
+        const btnText = nextBtn.querySelector('.btn-text') as HTMLElement;
+        const btnTextReady = nextBtn.querySelector('.btn-text-ready') as HTMLElement;
+        
+        if (isReady) {
+          nextBtn.classList.add('btn-ready');
+          if (btnText) btnText.style.display = 'none';
+          if (btnTextReady) btnTextReady.style.display = 'inline';
+        } else {
+          nextBtn.classList.remove('btn-ready');
+          if (btnText) btnText.style.display = 'inline';
+          if (btnTextReady) btnTextReady.style.display = 'none';
+        }
       }
     });
   });
